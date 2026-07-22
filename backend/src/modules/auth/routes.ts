@@ -12,6 +12,12 @@ function isAllowedEmail(email: string): boolean {
   return !!domain && env.allowedEmailDomains.includes(domain);
 }
 
+function matchesSecret(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 export async function authRoutes(app: FastifyInstance) {
   app.post<{ Body: { email: string } }>("/api/auth/magic-link", async (req, reply) => {
     const email = req.body?.email?.trim().toLowerCase();
@@ -62,6 +68,28 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.send({
       user: { id: magicLink.user.id, email: magicLink.user.email, displayName: magicLink.user.displayName },
     });
+  });
+
+  app.get<{ Querystring: { secret?: string } }>("/api/auth/dev-login", async (req, reply) => {
+    if (!env.testLoginSecret || !env.testLoginEmail) {
+      return reply.code(404).send();
+    }
+
+    const provided = req.query.secret ?? "";
+    if (!matchesSecret(provided, env.testLoginSecret)) {
+      return reply.code(404).send();
+    }
+
+    const user = await prisma.user.upsert({
+      where: { email: env.testLoginEmail },
+      update: {},
+      create: { email: env.testLoginEmail },
+    });
+
+    const session = signSession({ userId: user.id, email: user.email });
+    reply.setCookie(sessionCookie.name, session, sessionCookie.options);
+
+    return reply.redirect(`${env.appOrigin}/`);
   });
 
   app.post("/api/auth/logout", async (_req, reply) => {

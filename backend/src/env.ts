@@ -33,4 +33,6 @@ export const env = {
     pass: process.env.SMTP_PASS ?? "",
     from: process.env.SMTP_FROM ?? "Flashcards <no-reply@example.com>",
   },
+  testLoginSecret: process.env.TEST_LOGIN_SECRET ?? "",
+  testLoginEmail: process.env.TEST_LOGIN_EMAIL ?? "",
 };
