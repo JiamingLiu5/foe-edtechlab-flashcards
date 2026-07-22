@@ -1,7 +1,7 @@
 FROM node:22-alpine AS build
 WORKDIR /repo
 
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json* tsconfig.base.json ./
 COPY shared/package.json shared/
 COPY backend/package.json backend/
 RUN npm ci
@@ -16,7 +16,7 @@ FROM node:22-alpine AS runtime
 WORKDIR /repo
 ENV NODE_ENV=production
 
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json* tsconfig.base.json ./
 COPY shared/package.json shared/
 COPY backend/package.json backend/
 RUN npm ci --omit=dev
