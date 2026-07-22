@@ -21,7 +21,7 @@ export const env = {
   anthropicModelGeneration: process.env.ANTHROPIC_MODEL_GENERATION ?? "claude-sonnet-4-5",
   anthropicModelGrading: process.env.ANTHROPIC_MODEL_GRADING ?? "claude-haiku-4-5",
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
-  geminiModelOcr: process.env.GEMINI_MODEL_OCR ?? "gemini-2.5-flash-lite",
+  geminiModelOcr: process.env.GEMINI_MODEL_OCR ?? "gemini-3.5-flash-lite",
   uploadDir: process.env.UPLOAD_DIR ?? "/data/uploads",
   maxUploadBytes: Number(process.env.MAX_UPLOAD_MB ?? 20) * 1024 * 1024,
   dailyGenerationQuota: Number(process.env.DAILY_GENERATION_QUOTA ?? 10),
