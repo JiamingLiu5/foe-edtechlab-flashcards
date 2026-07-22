@@ -1,5 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
 import { env } from "../env.js";
+import {
+  GENERATION_SYSTEM_PROMPT,
+  GRADING_SYSTEM_PROMPT,
+  buildGenerationUserPrompt,
+  buildGradingUserPrompt,
+  parseGeneratedCards,
+  parseGradingResult,
+  type GeneratedCard,
+} from "./aiPrompts.js";
 
 const genai = new GoogleGenAI({ apiKey: env.geminiApiKey });
 
@@ -34,4 +43,40 @@ export async function extractPdfText(params: { pdfBase64: string; filename: stri
     throw new Error("Gemini OCR returned no text for this PDF.");
   }
   return text;
+}
+
+/**
+ * Fallback for card generation when no Anthropic API key is configured —
+ * same prompt/parsing contract as the Claude path in lib/claude.ts.
+ */
+export async function generateCardsFromText(params: {
+  slideText: string;
+  filename: string;
+  styleReferenceCards: { front: string; back: string }[];
+}): Promise<GeneratedCard[]> {
+  const response = await genai.models.generateContent({
+    model: env.geminiModelGeneration,
+    config: { systemInstruction: GENERATION_SYSTEM_PROMPT },
+    contents: [{ role: "user", parts: [{ text: buildGenerationUserPrompt(params) }] }],
+  });
+
+  return parseGeneratedCards(response.text ?? "", "Gemini");
+}
+
+/**
+ * Fallback for self-check grading when no Anthropic API key is configured —
+ * same prompt/parsing contract as the Claude path in lib/claude.ts.
+ */
+export async function gradeSelfCheckAnswer(params: {
+  question: string;
+  referenceAnswer: string;
+  studentAnswer: string;
+}): Promise<{ score: number; feedback: string; missing: string[] }> {
+  const response = await genai.models.generateContent({
+    model: env.geminiModelGrading,
+    config: { systemInstruction: GRADING_SYSTEM_PROMPT },
+    contents: [{ role: "user", parts: [{ text: buildGradingUserPrompt(params) }] }],
+  });
+
+  return parseGradingResult(response.text ?? "", "Gemini");
 }
