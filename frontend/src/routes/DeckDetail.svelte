@@ -1,0 +1,138 @@
+<script lang="ts">
+  import { onMount } from "svelte";
+  import type { CardDTO } from "@flashcards/shared";
+  import { api } from "../lib/api";
+  import { navigate } from "../lib/router";
+  import Katex from "../lib/Math.svelte";
+
+  export let deckId: string;
+
+  let cards: CardDTO[] = [];
+  let loading = true;
+  let front = "";
+  let back = "";
+  let bulkText = "";
+  let showBulk = false;
+  let saving = false;
+
+  async function load() {
+    loading = true;
+    const res = await api.listCards(deckId);
+    cards = res.cards;
+    loading = false;
+  }
+
+  async function addCard() {
+    if (!front.trim() || !back.trim()) return;
+    saving = true;
+    try {
+      await api.createCard(deckId, front.trim(), back.trim());
+      front = "";
+      back = "";
+      await load();
+    } finally {
+      saving = false;
+    }
+  }
+
+  async function addBulk() {
+    // One card per line, front and back separated by a tab or " | ".
+    const parsed = bulkText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [f, ...rest] = line.split(/\t| \| /);
+        return { front: f?.trim() ?? "", back: rest.join(" | ").trim() };
+      })
+      .filter((c) => c.front && c.back);
+
+    if (!parsed.length) return;
+    saving = true;
+    try {
+      await api.createCardsBulk(deckId, parsed);
+      bulkText = "";
+      showBulk = false;
+      await load();
+    } finally {
+      saving = false;
+    }
+  }
+
+  async function removeCard(cardId: string) {
+    if (!confirm("Delete this card?")) return;
+    await api.deleteCard(deckId, cardId);
+    await load();
+  }
+
+  onMount(load);
+</script>
+
+<button class="back" on:click={() => navigate("/decks")}>&larr; All decks</button>
+
+<div class="actions">
+  <button class="btn" on:click={() => navigate(`/decks/${deckId}/import`)}>Import PDF</button>
+  <button class="btn" on:click={() => navigate(`/decks/${deckId}/study`)}>Study</button>
+  <button class="btn" on:click={() => navigate(`/decks/${deckId}/quiz`)}>Quiz</button>
+  <button class="btn" on:click={() => navigate(`/decks/${deckId}/selfcheck`)}>Self-check</button>
+  <a class="btn" href={api.exportAnkiUrl(deckId)}>Export (Anki)</a>
+</div>
+
+<div class="card-surface add-card">
+  <div class="add-card-header">
+    <h3>Add a card</h3>
+    <button class="btn" on:click={() => (showBulk = !showBulk)}>{showBulk ? "Single card" : "Bulk paste"}</button>
+  </div>
+
+  {#if showBulk}
+    <p class="muted small">One card per line: <code>front &lt;tab&gt; back</code> or <code>front | back</code></p>
+    <textarea rows="6" bind:value={bulkText} placeholder={"What is the capital of France?\tParis"}></textarea>
+    <button class="btn btn-primary" on:click={addBulk} disabled={saving}>Add all</button>
+  {:else}
+    <form on:submit|preventDefault={addCard}>
+      <input placeholder="Front" bind:value={front} />
+      <input placeholder="Back" bind:value={back} />
+      <button class="btn btn-primary" type="submit" disabled={saving}>Add card</button>
+    </form>
+  {/if}
+</div>
+
+{#if loading}
+  <p class="muted">Loading…</p>
+{:else if cards.length === 0}
+  <p class="muted">No cards yet.</p>
+{:else}
+  <ul class="card-list">
+    {#each cards as card}
+      <li class="card-surface">
+        <div class="front"><Katex text={card.front} /></div>
+        <div class="back muted"><Katex text={card.back} /></div>
+        {#if card.source && card.source !== "manual"}<div class="source muted small">{card.source}</div>{/if}
+        <button class="delete" on:click={() => removeCard(card.id)}>Delete</button>
+      </li>
+    {/each}
+  </ul>
+{/if}
+
+<style>
+  .back { background: none; border: none; color: var(--text-dim); margin-bottom: 1rem; padding: 0; }
+  .back:hover { color: var(--text); }
+  .actions { display: flex; gap: 0.6rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .actions a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+  .add-card { padding: 1.1rem; margin-bottom: 1.5rem; }
+  .add-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+  .add-card h3 { margin: 0; }
+  .add-card form { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .add-card input { flex: 1; min-width: 180px; }
+  .add-card textarea { width: 100%; margin-bottom: 0.6rem; font-family: monospace; }
+  .small { font-size: 0.8rem; }
+  .card-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+  .card-list li { padding: 0.9rem 1rem; position: relative; }
+  .front { font-weight: 600; margin-bottom: 0.3rem; }
+  .source { margin-top: 0.4rem; }
+  .delete {
+    position: absolute; top: 0.7rem; right: 0.9rem;
+    background: none; border: none; color: var(--text-dim); font-size: 0.8rem;
+  }
+  .delete:hover { color: var(--bad); }
+</style>

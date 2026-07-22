@@ -1,0 +1,28 @@
+{
+  "name": "foe-edtechlab-flashcards",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:infra": "docker compose -f infra/docker-compose.dev.yml up -d",
+    "dev:backend": "npm run dev -w backend",
+    "dev:worker": "npm run dev:worker -w backend",
+    "dev:frontend": "npm run dev -w frontend",
+    "build": "npm run build -w shared && npm run prisma:generate && npm run build -w backend && npm run build -w frontend",
+    "prisma:generate": "npm run prisma:generate -w backend",
+    "prisma:migrate": "npm run prisma:migrate -w backend"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "esbuild@0.28.1": true,
+    "msgpackr-extract@3.0.4": true,
+    "prisma@6.19.3": true,
+    "fsevents@2.3.3": true,
+    "@google/genai@2.12.0": true,
+    "protobufjs@7.6.5": true
+  }
+}

@@ -1,0 +1,138 @@
+<script lang="ts">
+  import { onDestroy, onMount } from "svelte";
+  import type { AiDraftDTO, GenerationJobDTO } from "@flashcards/shared";
+  import { api } from "../lib/api";
+  import { navigate } from "../lib/router";
+  import Katex from "../lib/Math.svelte";
+
+  export let deckId: string;
+  export let jobId: string;
+
+  let job: GenerationJobDTO | null = null;
+  let error = "";
+  let editingId: string | null = null;
+  let editFront = "";
+  let editBack = "";
+  let timer: ReturnType<typeof setInterval>;
+
+  const STATUS_LABEL: Record<string, string> = {
+    queued: "Queued…",
+    extracting: "Reading PDF…",
+    generating: "Drafting cards with Claude…",
+    ready: "Ready for review",
+    failed: "Failed",
+  };
+
+  async function poll() {
+    try {
+      const res = await api.getJob(jobId);
+      job = res.job;
+      if (job.status === "ready" || job.status === "failed") clearInterval(timer);
+    } catch {
+      error = "Could not load this job.";
+      clearInterval(timer);
+    }
+  }
+
+  onMount(() => {
+    poll();
+    timer = setInterval(poll, 2500);
+  });
+  onDestroy(() => clearInterval(timer));
+
+  function startEdit(draft: AiDraftDTO) {
+    editingId = draft.id;
+    editFront = draft.editedFront ?? draft.generatedFront;
+    editBack = draft.editedBack ?? draft.generatedBack;
+  }
+
+  async function accept(draft: AiDraftDTO, edited: boolean) {
+    await api.acceptDraft(jobId, draft.id, edited ? { front: editFront, back: editBack } : undefined);
+    editingId = null;
+    await poll();
+  }
+
+  async function discard(draft: AiDraftDTO) {
+    await api.discardDraft(jobId, draft.id);
+    await poll();
+  }
+
+  $: pending = job?.drafts.filter((d) => d.status === "pending") ?? [];
+  $: resolved = job?.drafts.filter((d) => d.status !== "pending") ?? [];
+  $: allResolved = job && job.drafts.length > 0 && pending.length === 0;
+</script>
+
+<button class="back" on:click={() => navigate(`/decks/${deckId}`)}>&larr; Back to deck</button>
+<h1>AI review</h1>
+
+{#if error}
+  <p class="error">{error}</p>
+{:else if !job}
+  <p class="muted">Loading…</p>
+{:else if job.status !== "ready" && job.status !== "failed"}
+  <p class="muted">{STATUS_LABEL[job.status]}</p>
+{:else if job.status === "failed"}
+  <p class="error">{job.error ?? "Generation failed."}</p>
+{:else if job.drafts.length === 0}
+  <p class="muted">No groundable cards could be drawn from this PDF.</p>
+{:else}
+  <p class="muted">Each card below cites where in the PDF it came from. Nothing is added to your deck until you accept it.</p>
+
+  {#if allResolved}
+    <p class="done card-surface">All drafts resolved. <button class="btn btn-primary" on:click={() => navigate(`/decks/${deckId}`)}>Back to deck</button></p>
+  {/if}
+
+  <ul class="drafts">
+    {#each pending as draft}
+      <li class="card-surface draft">
+        {#if editingId === draft.id}
+          <input bind:value={editFront} placeholder="Front" />
+          <textarea rows="3" bind:value={editBack} placeholder="Back"></textarea>
+          <div class="row">
+            <button class="btn btn-primary" on:click={() => accept(draft, true)}>Save & accept</button>
+            <button class="btn" on:click={() => (editingId = null)}>Cancel</button>
+          </div>
+        {:else}
+          <div class="diff">
+            <div class="front"><Katex text={draft.generatedFront} /></div>
+            <div class="back muted"><Katex text={draft.generatedBack} /></div>
+            {#if draft.sourceCitation}<div class="citation">📎 {draft.sourceCitation}</div>{/if}
+          </div>
+          <div class="row">
+            <button class="btn btn-primary" on:click={() => accept(draft, false)}>Accept</button>
+            <button class="btn" on:click={() => startEdit(draft)}>Edit</button>
+            <button class="btn btn-danger" on:click={() => discard(draft)}>Discard</button>
+          </div>
+        {/if}
+      </li>
+    {/each}
+  </ul>
+
+  {#if resolved.length > 0}
+    <h3 class="muted">Resolved ({resolved.length})</h3>
+    <ul class="drafts resolved">
+      {#each resolved as draft}
+        <li class="card-surface draft resolved-item">
+          <div class="front"><Katex text={draft.editedFront ?? draft.generatedFront} /></div>
+          <span class="tag" class:accepted={draft.status === "accepted"}>{draft.status}</span>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+{/if}
+
+<style>
+  .back { background: none; border: none; color: var(--text-dim); margin-bottom: 1rem; padding: 0; }
+  .back:hover { color: var(--text); }
+  .done { padding: 1rem; display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+  .drafts { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.8rem; }
+  .draft { padding: 1rem; }
+  .front { font-weight: 600; margin-bottom: 0.35rem; }
+  .citation { margin-top: 0.5rem; font-size: 0.8rem; color: var(--accent); }
+  .row { display: flex; gap: 0.5rem; margin-top: 0.8rem; }
+  .draft textarea, .draft input { width: 100%; margin-bottom: 0.5rem; }
+  .resolved-item { display: flex; justify-content: space-between; align-items: center; opacity: 0.7; }
+  .tag { font-size: 0.75rem; text-transform: uppercase; color: var(--bad); }
+  .tag.accepted { color: var(--good); }
+  .error { color: var(--bad); }
+</style>

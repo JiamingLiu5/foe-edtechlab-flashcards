@@ -1,0 +1,30 @@
+FROM node:22-alpine AS build
+WORKDIR /repo
+
+COPY package.json package-lock.json* ./
+COPY shared/package.json shared/
+COPY backend/package.json backend/
+RUN npm ci
+
+COPY shared shared
+COPY backend backend
+RUN npm run build -w shared
+RUN npm run prisma:generate -w backend
+RUN npm run build -w backend
+
+FROM node:22-alpine AS runtime
+WORKDIR /repo
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json* ./
+COPY shared/package.json shared/
+COPY backend/package.json backend/
+RUN npm ci --omit=dev
+
+COPY --from=build /repo/shared/dist shared/dist
+COPY --from=build /repo/backend/dist backend/dist
+COPY --from=build /repo/backend/generated backend/generated
+COPY --from=build /repo/backend/prisma backend/prisma
+
+WORKDIR /repo/backend
+CMD ["node", "dist/worker.js"]

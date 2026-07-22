@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  displayName String?
+  createdAt   DateTime @default(now())
+
+  decks       Deck[]
+  reviews     Review[]
+  magicLinks  MagicLink[]
+  jobsCreated GenerationJob[]
+
+  @@map("users")
+}
+
+model MagicLink {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@map("magic_links")
+}
+
+model Deck {
+  id        String   @id @default(uuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+
+  cards           Card[]
+  generationJobs  GenerationJob[]
+
+  @@map("decks")
+}
+
+model Card {
+  id        String   @id @default(uuid())
+  deckId    String
+  deck      Deck     @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  front     String
+  back      String
+  source    String?
+  createdAt DateTime @default(now())
+
+  reviews     Review[]
+  originDraft AiDraft?
+
+  @@map("cards")
+  @@index([deckId])
+}
+
+enum GenerationJobStatus {
+  queued
+  extracting
+  generating
+  ready
+  failed
+}
+
+model GenerationJob {
+  id             String              @id @default(uuid())
+  deckId         String
+  deck           Deck                @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  requestedById  String
+  requestedBy    User                @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+  status         GenerationJobStatus @default(queued)
+  sourceFilename String
+  uploadPath     String
+  error          String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  drafts AiDraft[]
+
+  @@map("generation_jobs")
+  @@index([deckId])
+}
+
+enum AiDraftStatus {
+  pending
+  accepted
+  discarded
+}
+
+model AiDraft {
+  id              String        @id @default(uuid())
+  jobId           String
+  job             GenerationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  generatedFront  String
+  generatedBack   String
+  editedFront     String?
+  editedBack      String?
+  sourceCitation  String?
+  status          AiDraftStatus @default(pending)
+  resultingCardId String?       @unique
+  resultingCard   Card?         @relation(fields: [resultingCardId], references: [id])
+  createdAt       DateTime      @default(now())
+
+  @@map("ai_drafts")
+  @@index([jobId])
+}
+
+enum ReviewOutcome {
+  again
+  hard
+  good
+  easy
+}
+
+model Review {
+  id           String        @id @default(uuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cardId       String
+  card         Card          @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  reviewedAt   DateTime      @default(now())
+  outcome      ReviewOutcome
+  easeFactor   Float
+  intervalDays Int
+  dueAt        DateTime
+
+  @@map("reviews")
+  @@index([cardId])
+  @@index([userId, dueAt])
+}
