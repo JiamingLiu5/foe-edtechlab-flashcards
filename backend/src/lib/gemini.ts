@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { env } from "../env.js";
+import { withRetry } from "./retry.js";
 import {
   GENERATION_SYSTEM_PROMPT,
   GRADING_SYSTEM_PROMPT,
@@ -29,24 +30,26 @@ Before each slide's content, emit a marker line on its own: "=== Slide N ===" (N
  * of raw PDF bytes.
  */
 export async function extractPdfText(params: { pdfBase64: string; filename: string }): Promise<string> {
-  const response = await genai.models.generateContent({
-    model: env.geminiModelOcr,
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { inlineData: { mimeType: "application/pdf", data: params.pdfBase64 } },
-          { text: `${OCR_PROMPT}\n\nFile: ${params.filename}` },
-        ],
-      },
-    ],
-  });
+  return withRetry(async () => {
+    const response = await genai.models.generateContent({
+      model: env.geminiModelOcr,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType: "application/pdf", data: params.pdfBase64 } },
+            { text: `${OCR_PROMPT}\n\nFile: ${params.filename}` },
+          ],
+        },
+      ],
+    });
 
-  const text = response.text;
-  if (!text?.trim()) {
-    throw new Error("Gemini OCR returned no text for this PDF.");
-  }
-  return text;
+    const text = response.text;
+    if (!text?.trim()) {
+      throw new Error("Gemini OCR returned no text for this PDF.");
+    }
+    return text;
+  });
 }
 
 /**

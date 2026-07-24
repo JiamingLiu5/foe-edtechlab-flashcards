@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../db.js";
 import { requireAdmin } from "../auth/plugin.js";
+import { listDeckSummariesForOwner } from "../decks/routes.js";
 import type { AdminUserDTO } from "@flashcards/shared";
 
 function toAdminUserDTO(user: {
@@ -100,5 +101,33 @@ export async function adminRoutes(app: FastifyInstance) {
       data: { role: "user" },
     });
     return reply.send({ user: toAdminUserDTO(user) });
+  });
+
+  app.get<{ Params: { id: string } }>("/api/admin/users/:id/decks", async (req, reply) => {
+    const admin = requireAdmin(req, reply);
+    if (!admin) return;
+
+    const targetUser = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!targetUser) return reply.code(404).send({ error: "not_found", message: "User not found." });
+
+    const decks = await listDeckSummariesForOwner(targetUser.id);
+    return reply.send({ user: toAdminUserDTO(targetUser), decks });
+  });
+
+  app.get<{ Params: { deckId: string } }>("/api/admin/decks/:deckId/cards", async (req, reply) => {
+    const admin = requireAdmin(req, reply);
+    if (!admin) return;
+
+    const deck = await prisma.deck.findUnique({ where: { id: req.params.deckId } });
+    if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
+
+    const cards = await prisma.card.findMany({
+      where: { deckId: deck.id },
+      orderBy: { createdAt: "asc" },
+    });
+    return reply.send({
+      deck: { id: deck.id, name: deck.name, ownerId: deck.ownerId, createdAt: deck.createdAt.toISOString() },
+      cards,
+    });
   });
 }

@@ -3,6 +3,7 @@
   import type { AdminUserDTO } from "@flashcards/shared";
   import { api, ApiError } from "../lib/api";
   import { currentUser } from "../lib/auth";
+  import { navigate } from "../lib/router";
 
   let users: AdminUserDTO[] = [];
   let loading = true;
@@ -68,6 +69,7 @@
             <td><span class="pill status-{user.status}">{user.status}</span></td>
             <td class="muted">{new Date(user.createdAt).toLocaleDateString()}</td>
             <td class="actions">
+              <button class="btn" on:click={() => navigate(`/admin/users/${user.id}/decks`)}>View decks</button>
               {#if user.status === "pending"}
                 <button class="btn btn-primary" disabled={busyId === user.id} on:click={() => act(user.id, api.adminApprove)}>Approve</button>
                 <button class="btn" disabled={busyId === user.id} on:click={() => act(user.id, api.adminReject)}>Reject</button>

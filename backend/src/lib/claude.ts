@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "../env.js";
 import * as gemini from "./gemini.js";
+import { withRetry } from "./retry.js";
 import {
   GENERATION_SYSTEM_PROMPT,
   GRADING_SYSTEM_PROMPT,
@@ -29,43 +30,47 @@ export async function generateCardsFromText(params: {
   filename: string;
   styleReferenceCards: { front: string; back: string }[];
 }): Promise<GeneratedCard[]> {
-  if (usingGemini) {
-    return gemini.generateCardsFromText(params);
-  }
+  return withRetry(async () => {
+    if (usingGemini) {
+      return gemini.generateCardsFromText(params);
+    }
 
-  const message = await anthropic.messages.create({
-    model: env.anthropicModelGeneration,
-    max_tokens: 4096,
-    system: GENERATION_SYSTEM_PROMPT,
-    messages: [{ role: "user", content: buildGenerationUserPrompt(params) }],
+    const message = await anthropic.messages.create({
+      model: env.anthropicModelGeneration,
+      max_tokens: 4096,
+      system: GENERATION_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: buildGenerationUserPrompt(params) }],
+    });
+
+    const text = message.content
+      .filter((block) => block.type === "text")
+      .map((block) => (block as { text: string }).text)
+      .join("\n");
+
+    return parseGeneratedCards(text, "Claude");
   });
-
-  const text = message.content
-    .filter((block) => block.type === "text")
-    .map((block) => (block as { text: string }).text)
-    .join("\n");
-
-  return parseGeneratedCards(text, "Claude");
 }
 
 export async function reviewCards(cards: { id: string; front: string; back: string }[]): Promise<ReviewFlag[]> {
-  if (usingGemini) {
-    return gemini.reviewCards(cards);
-  }
+  return withRetry(async () => {
+    if (usingGemini) {
+      return gemini.reviewCards(cards);
+    }
 
-  const message = await anthropic.messages.create({
-    model: env.anthropicModelGeneration,
-    max_tokens: 4096,
-    system: REVIEW_SYSTEM_PROMPT,
-    messages: [{ role: "user", content: buildReviewUserPrompt(cards) }],
+    const message = await anthropic.messages.create({
+      model: env.anthropicModelGeneration,
+      max_tokens: 4096,
+      system: REVIEW_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: buildReviewUserPrompt(cards) }],
+    });
+
+    const text = message.content
+      .filter((block) => block.type === "text")
+      .map((block) => (block as { text: string }).text)
+      .join("\n");
+
+    return parseReviewFlags(text, "Claude", cards);
   });
-
-  const text = message.content
-    .filter((block) => block.type === "text")
-    .map((block) => (block as { text: string }).text)
-    .join("\n");
-
-  return parseReviewFlags(text, "Claude", cards);
 }
 
 export async function gradeSelfCheckAnswer(params: {
@@ -73,21 +78,23 @@ export async function gradeSelfCheckAnswer(params: {
   referenceAnswer: string;
   studentAnswer: string;
 }): Promise<{ score: number; feedback: string; missing: string[] }> {
-  if (usingGemini) {
-    return gemini.gradeSelfCheckAnswer(params);
-  }
+  return withRetry(async () => {
+    if (usingGemini) {
+      return gemini.gradeSelfCheckAnswer(params);
+    }
 
-  const message = await anthropic.messages.create({
-    model: env.anthropicModelGrading,
-    max_tokens: 512,
-    system: GRADING_SYSTEM_PROMPT,
-    messages: [{ role: "user", content: buildGradingUserPrompt(params) }],
+    const message = await anthropic.messages.create({
+      model: env.anthropicModelGrading,
+      max_tokens: 512,
+      system: GRADING_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: buildGradingUserPrompt(params) }],
+    });
+
+    const text = message.content
+      .filter((block) => block.type === "text")
+      .map((block) => (block as { text: string }).text)
+      .join("\n");
+
+    return parseGradingResult(text, "Claude");
   });
-
-  const text = message.content
-    .filter((block) => block.type === "text")
-    .map((block) => (block as { text: string }).text)
-    .join("\n");
-
-  return parseGradingResult(text, "Claude");
 }

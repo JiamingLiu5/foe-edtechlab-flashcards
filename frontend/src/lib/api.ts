@@ -50,6 +50,11 @@ export const api = {
   adminReactivate: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/reactivate`, { method: "POST" }),
   adminPromote: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/promote`, { method: "POST" }),
   adminDemote: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/demote`, { method: "POST" }),
+  adminListUserDecks: (id: string) => request<{ user: AdminUserDTO; decks: DeckSummaryDTO[] }>(`/admin/users/${id}/decks`),
+  adminListDeckCards: (deckId: string) =>
+    request<{ deck: { id: string; name: string; ownerId: string; createdAt: string }; cards: CardDTO[] }>(
+      `/admin/decks/${deckId}/cards`
+    ),
 
   listDecks: () => request<{ decks: DeckSummaryDTO[] }>("/decks"),
   createDeck: (name: string) => request<{ deck: DeckSummaryDTO }>("/decks", { method: "POST", body: JSON.stringify({ name }) }),

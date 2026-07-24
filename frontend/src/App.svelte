@@ -14,6 +14,8 @@
   import Quiz from "./routes/Quiz.svelte";
   import SelfCheck from "./routes/SelfCheck.svelte";
   import AdminUsers from "./routes/AdminUsers.svelte";
+  import AdminUserDecks from "./routes/AdminUserDecks.svelte";
+  import AdminDeckDetail from "./routes/AdminDeckDetail.svelte";
 
   onMount(refreshSession);
 
@@ -28,6 +30,8 @@
   $: studyParams = matchRoute("/decks/:id/study", path);
   $: quizParams = matchRoute("/decks/:id/quiz", path);
   $: selfCheckParams = matchRoute("/decks/:id/selfcheck", path);
+  $: adminUserDeckParams = matchRoute("/admin/users/:id/decks/:deckId", path);
+  $: adminUserDecksParams = matchRoute("/admin/users/:id/decks", path);
   $: isAdminRoute = path === "/admin";
   $: isLibrary = path === "/decks" || path === "/" || path === "/login" || path === "";
 
@@ -56,6 +60,10 @@
     <main>
       {#if isAdminRoute && isAdmin}
         <AdminUsers />
+      {:else if adminUserDeckParams && isAdmin}
+        <AdminDeckDetail userId={adminUserDeckParams.id} deckId={adminUserDeckParams.deckId} />
+      {:else if adminUserDecksParams && isAdmin}
+        <AdminUserDecks userId={adminUserDecksParams.id} />
       {:else if selfCheckParams}
         <SelfCheck deckId={selfCheckParams.id} />
       {:else if quizParams}

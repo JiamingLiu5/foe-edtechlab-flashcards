@@ -3,39 +3,42 @@ import { prisma } from "../../db.js";
 import { requireUser } from "../auth/plugin.js";
 import type { DeckSummaryDTO } from "@flashcards/shared";
 
+export async function listDeckSummariesForOwner(ownerId: string): Promise<DeckSummaryDTO[]> {
+  const decks = await prisma.deck.findMany({
+    where: { ownerId },
+    orderBy: { createdAt: "desc" },
+    include: { cards: { select: { id: true } } },
+  });
+
+  const now = new Date();
+  return Promise.all(
+    decks.map(async (deck) => {
+      const cardIds = deck.cards.map((c) => c.id);
+      const [dueCount, forgottenCount] = cardIds.length
+        ? await Promise.all([
+            countDue(cardIds, ownerId, now),
+            countForgotten(cardIds, ownerId),
+          ])
+        : [0, 0];
+
+      return {
+        id: deck.id,
+        name: deck.name,
+        cardCount: cardIds.length,
+        dueCount,
+        forgottenCount,
+        createdAt: deck.createdAt.toISOString(),
+      };
+    })
+  );
+}
+
 export async function deckRoutes(app: FastifyInstance) {
   app.get("/api/decks", async (req, reply) => {
     const user = requireUser(req, reply);
     if (!user) return;
 
-    const decks = await prisma.deck.findMany({
-      where: { ownerId: user.userId },
-      orderBy: { createdAt: "desc" },
-      include: { cards: { select: { id: true } } },
-    });
-
-    const now = new Date();
-    const summaries: DeckSummaryDTO[] = await Promise.all(
-      decks.map(async (deck) => {
-        const cardIds = deck.cards.map((c) => c.id);
-        const [dueCount, forgottenCount] = cardIds.length
-          ? await Promise.all([
-              countDue(cardIds, user.userId, now),
-              countForgotten(cardIds, user.userId),
-            ])
-          : [0, 0];
-
-        return {
-          id: deck.id,
-          name: deck.name,
-          cardCount: cardIds.length,
-          dueCount,
-          forgottenCount,
-          createdAt: deck.createdAt.toISOString(),
-        };
-      })
-    );
-
+    const summaries = await listDeckSummariesForOwner(user.userId);
     return reply.send({ decks: summaries });
   });
 
