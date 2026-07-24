@@ -2,10 +2,10 @@ import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../db.js";
 import { env } from "../../env.js";
-import { sendMagicLinkEmail } from "./mailer.js";
+import { hashPassword, verifyPassword } from "./password.js";
 import { signSession, sessionCookie } from "./session.js";
 
-const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
+const MIN_PASSWORD_LENGTH = 8;
 
 function isAllowedEmail(email: string): boolean {
   const domain = email.split("@")[1]?.toLowerCase();
@@ -19,55 +19,57 @@ function matchesSecret(provided: string, expected: string): boolean {
 }
 
 export async function authRoutes(app: FastifyInstance) {
-  app.post<{ Body: { email: string } }>("/api/auth/magic-link", async (req, reply) => {
+  app.post<{ Body: { email: string; password: string } }>("/api/auth/signup", async (req, reply) => {
     const email = req.body?.email?.trim().toLowerCase();
+    const password = req.body?.password ?? "";
+
     if (!email || !isAllowedEmail(email)) {
       return reply.code(400).send({
         error: "invalid_email",
-        message: `Sign-in is restricted to ${env.allowedEmailDomains.map((d) => "@" + d).join(" / ")} addresses.`,
+        message: `Sign-up is restricted to ${env.allowedEmailDomains.map((d) => "@" + d).join(" / ")} addresses.`,
+      });
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      return reply.code(400).send({
+        error: "weak_password",
+        message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
       });
     }
 
-    const user = await prisma.user.upsert({
-      where: { email },
-      update: {},
-      create: { email },
-    });
-
-    const token = crypto.randomBytes(32).toString("hex");
-    await prisma.magicLink.create({
-      data: {
-        token,
-        userId: user.id,
-        expiresAt: new Date(Date.now() + MAGIC_LINK_TTL_MS),
-      },
-    });
-
-    const link = `${env.appOrigin}/#/auth/verify?token=${token}`;
-    await sendMagicLinkEmail(email, link);
-
-    return reply.send({ ok: true });
-  });
-
-  app.get<{ Querystring: { token: string } }>("/api/auth/verify", async (req, reply) => {
-    const { token } = req.query;
-    if (!token) {
-      return reply.code(400).send({ error: "missing_token", message: "Missing token." });
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      return reply.code(409).send({ error: "email_taken", message: "An account with this email already exists." });
     }
 
-    const magicLink = await prisma.magicLink.findUnique({ where: { token }, include: { user: true } });
-    if (!magicLink || magicLink.usedAt || magicLink.expiresAt < new Date()) {
-      return reply.code(400).send({ error: "invalid_token", message: "This link is invalid or has expired." });
-    }
+    const passwordHash = await hashPassword(password);
+    const user = await prisma.user.create({ data: { email, passwordHash } });
 
-    await prisma.magicLink.update({ where: { id: magicLink.id }, data: { usedAt: new Date() } });
-
-    const session = signSession({ userId: magicLink.user.id, email: magicLink.user.email });
+    const session = signSession({ userId: user.id, email: user.email });
     reply.setCookie(sessionCookie.name, session, sessionCookie.options);
 
-    return reply.send({
-      user: { id: magicLink.user.id, email: magicLink.user.email, displayName: magicLink.user.displayName },
-    });
+    return reply.send({ user: { id: user.id, email: user.email, displayName: user.displayName } });
+  });
+
+  app.post<{ Body: { email: string; password: string } }>("/api/auth/login", async (req, reply) => {
+    const email = req.body?.email?.trim().toLowerCase();
+    const password = req.body?.password ?? "";
+
+    const invalidCredentials = () =>
+      reply.code(401).send({ error: "invalid_credentials", message: "Incorrect email or password." });
+
+    if (!email || !password) {
+      return invalidCredentials();
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+      return invalidCredentials();
+    }
+
+    const session = signSession({ userId: user.id, email: user.email });
+    reply.setCookie(sessionCookie.name, session, sessionCookie.options);
+
+    return reply.send({ user: { id: user.id, email: user.email, displayName: user.displayName } });
   });
 
   app.get<{ Querystring: { secret?: string } }>("/api/auth/dev-login", async (req, reply) => {
@@ -83,7 +85,7 @@ export async function authRoutes(app: FastifyInstance) {
     const user = await prisma.user.upsert({
       where: { email: env.testLoginEmail },
       update: {},
-      create: { email: env.testLoginEmail },
+      create: { email: env.testLoginEmail, passwordHash: await hashPassword(crypto.randomBytes(32).toString("hex")) },
     });
 
     const session = signSession({ userId: user.id, email: user.email });
@@ -101,6 +103,10 @@ export async function authRoutes(app: FastifyInstance) {
     if (!req.user) {
       return reply.code(401).send({ error: "unauthenticated", message: "Not signed in." });
     }
-    return reply.send({ user: { id: req.user.userId, email: req.user.email, displayName: null } });
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+    if (!user) {
+      return reply.code(401).send({ error: "unauthenticated", message: "Not signed in." });
+    }
+    return reply.send({ user: { id: user.id, email: user.email, displayName: user.displayName } });
   });
 }

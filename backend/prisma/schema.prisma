@@ -9,29 +9,17 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(uuid())
-  email       String   @unique
-  displayName String?
-  createdAt   DateTime @default(now())
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  displayName  String?
+  createdAt    DateTime @default(now())
 
   decks       Deck[]
   reviews     Review[]
-  magicLinks  MagicLink[]
   jobsCreated GenerationJob[]
 
   @@map("users")
-}
-
-model MagicLink {
-  id        String   @id @default(uuid())
-  token     String   @unique
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
-
-  @@map("magic_links")
 }
 
 model Deck {

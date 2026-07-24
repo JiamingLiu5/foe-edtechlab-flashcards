@@ -6,7 +6,6 @@
   import { api } from "./lib/api";
 
   import Login from "./routes/Login.svelte";
-  import VerifyMagicLink from "./routes/VerifyMagicLink.svelte";
   import DeckLibrary from "./routes/DeckLibrary.svelte";
   import DeckDetail from "./routes/DeckDetail.svelte";
   import PdfImport from "./routes/PdfImport.svelte";
@@ -21,7 +20,6 @@
   $: authChecked = $currentUser !== undefined;
   $: isLoggedIn = !!$currentUser;
 
-  $: verifyParams = matchRoute("/auth/verify", path);
   $: deckIdParams = matchRoute("/decks/:id", path);
   $: importParams = matchRoute("/decks/:id/import", path);
   $: reviewParams = matchRoute("/decks/:id/jobs/:jobId/review", path);
@@ -39,8 +37,6 @@
 
 {#if !authChecked}
   <div class="loading-screen">Loading…</div>
-{:else if verifyParams}
-  <VerifyMagicLink token={verifyParams.token} />
 {:else if !isLoggedIn}
   <Login />
 {:else}

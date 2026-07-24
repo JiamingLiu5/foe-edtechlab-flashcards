@@ -196,7 +196,7 @@ erDiagram
 
 **Primary**: Microsoft Entra ID (Azure AD) OAuth. Imperial already runs on Microsoft 365 — the survey itself was distributed as a Microsoft Form — so students already have the account this would use for sign-in; no new password, no separate credential to leak or reset.
 
-**Fallback, if Entra ID app registration isn't feasible for the team to obtain**: passwordless magic-link email, restricted at signup to `@ic.ac.uk` / `@imperial.ac.uk` addresses. Weaker than SSO (an email link can be forwarded) but requires no institutional approval and can ship immediately; treat it as a stopgap, not the target state.
+**Fallback, in use now since Entra ID app registration isn't feasible for the team to obtain**: email + password accounts, restricted at signup to `@ic.ac.uk` / `@imperial.ac.uk` addresses (passwords are app-specific, hashed with scrypt — not the user's actual Microsoft/Imperial password). Requires no institutional approval and can ship immediately; treat it as a stopgap, not the target state.
 
 Either way, session handling is a signed, HTTP-only cookie scoped to the single origin from §2 — no token stored in `localStorage`, nothing for a frontend XSS bug to steal directly.
 
@@ -234,7 +234,7 @@ Kept deliberately simple — one server, one deploy target — rather than a mul
 
 These are decisions this design deliberately leaves to the people who'll own them, not gaps in the design itself:
 
-- **Entra ID app registration** — does the team have (or can it get) the Imperial IT approval needed to register the app for SSO, or does launch start with the email-magic-link fallback?
+- **Entra ID app registration** — does the team have (or can it get) the Imperial IT approval needed to register the app for SSO? Launch is starting with the email + password fallback since this wasn't available.
 - **Claude API budget ownership** — who sets and monitors the per-user generation/grading quotas from §5, and what's the ceiling before it needs a conversation?
 - **Server hosting** — is the Linux VM Imperial-provided (departmental infrastructure) or an external host (e.g. a cloud VM) procured by the team? Affects who holds root and who's paged if it goes down.
 - **PDF retention exception** — confirm the "delete after drafts resolved" policy in §8 against any module/copyright-material handling guidance the department already has for lecture slides.

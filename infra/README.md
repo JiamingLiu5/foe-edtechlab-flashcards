@@ -27,10 +27,6 @@ Edit `.env` and fill in:
 - `ANTHROPIC_API_KEY` — used for card generation and self-check grading.
 - `GEMINI_API_KEY` — used for the PDF OCR/transcription step (Gemini 2.5 Flash
   Lite), ahead of the Claude generation call. Get one from Google AI Studio.
-- `SMTP_HOST` etc. — optional. If left blank, magic sign-in links are written
-  to the backend container's logs (`docker compose logs -f backend`) instead
-  of emailed. Fine for a first deploy/demo; configure real SMTP before real
-  users rely on it.
 
 ## 3. Bring the stack up
 
@@ -83,7 +79,7 @@ If you're trying this out before DNS is pointed at the box, edit
 
 (drop the HTTPS/ACME bits) and set `APP_ORIGIN=http://<server-ip>` in `.env`.
 Switch back to the real domain block before exposing this beyond your own
-testing — magic-link cookies are set `secure` in production and won't work
+testing — session cookies are set `secure` in production and won't work
 over plain HTTP from a browser's perspective once `NODE_ENV=production`
 either way, so this mode is for `curl`/local testing, not real logins.
 
@@ -98,10 +94,12 @@ docker compose exec db pg_dump -U flashcards flashcards | gzip > backup-$(date +
 
 ## What's intentionally out of scope for this prototype
 
-- Real Microsoft Entra ID SSO — this build uses the email magic-link fallback
-  from design.md §7. Swapping in Entra ID later means adding an OAuth module
-  under `backend/src/modules/auth/` and pointing the frontend's login screen
-  at it; the session-cookie plumbing underneath doesn't change.
+- Real Microsoft Entra ID SSO — this build uses email + password accounts
+  (restricted to `@ic.ac.uk` / `@imperial.ac.uk`) as the fallback from
+  design.md §7, since Entra app registration wasn't available. Swapping in
+  Entra ID later means adding an OAuth module under `backend/src/modules/auth/`
+  and pointing the frontend's login screen at it; the session-cookie plumbing
+  underneath doesn't change.
 - A real Anki `.apkg` export — `/api/decks/:id/export/anki` currently returns
   a tab-separated `.txt` file, which Anki's *File > Import* handles natively.
   A binary `.apkg` (SQLite-based) exporter is a reasonable later upgrade.

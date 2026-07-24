@@ -34,8 +34,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export { ApiError };
 
 export const api = {
-  requestMagicLink: (email: string) => request<{ ok: true }>("/auth/magic-link", { method: "POST", body: JSON.stringify({ email }) }),
-  verifyMagicLink: (token: string) => request<{ user: UserDTO }>(`/auth/verify?token=${encodeURIComponent(token)}`),
+  signup: (email: string, password: string) =>
+    request<{ user: UserDTO }>("/auth/signup", { method: "POST", body: JSON.stringify({ email, password }) }),
+  login: (email: string, password: string) =>
+    request<{ user: UserDTO }>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   me: () => request<{ user: UserDTO }>("/auth/me"),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
 

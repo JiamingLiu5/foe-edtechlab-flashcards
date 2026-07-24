@@ -30,13 +30,6 @@ export const env = {
   dailyGradingQuota: Number(process.env.DAILY_GRADING_QUOTA ?? 50),
   dailyDeckReviewQuota: Number(process.env.DAILY_DECK_REVIEW_QUOTA ?? 5),
   maxUrlFetchBytes: Number(process.env.MAX_URL_FETCH_MB ?? 5) * 1024 * 1024,
-  smtp: {
-    host: process.env.SMTP_HOST ?? "",
-    port: Number(process.env.SMTP_PORT ?? 587),
-    user: process.env.SMTP_USER ?? "",
-    pass: process.env.SMTP_PASS ?? "",
-    from: process.env.SMTP_FROM ?? "Flashcards <no-reply@example.com>",
-  },
   testLoginSecret: process.env.TEST_LOGIN_SECRET ?? "",
   testLoginEmail: process.env.TEST_LOGIN_EMAIL ?? "",
 };
