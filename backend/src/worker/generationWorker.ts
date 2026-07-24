@@ -2,9 +2,92 @@ import fs from "node:fs/promises";
 import { Worker, type Job } from "bullmq";
 import { redis } from "../redis.js";
 import { prisma } from "../db.js";
-import { generateCardsFromText } from "../lib/claude.js";
+import { generateCardsFromText, reviewCards } from "../lib/claude.js";
 import { extractPdfText } from "../lib/gemini.js";
+import { extractUrlText } from "../lib/urlExtract.js";
 import type { GenerationJobPayload } from "../lib/queue.js";
+
+const REVIEW_BATCH_SIZE = 20;
+
+async function processImportJob(job: { id: string; deckId: string; sourceFilename: string; sourceType: string; sourceUrl: string | null; uploadPath: string | null }) {
+  await prisma.generationJob.update({ where: { id: job.id }, data: { status: "extracting" } });
+
+  const sourceText =
+    job.sourceType === "url"
+      ? (await extractUrlText(job.sourceUrl!)).text
+      : await extractPdfText({
+          pdfBase64: (await fs.readFile(job.uploadPath!)).toString("base64"),
+          filename: job.sourceFilename,
+        });
+
+  const styleReferenceCards = await prisma.card.findMany({
+    where: { deckId: job.deckId },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: { front: true, back: true },
+  });
+
+  await prisma.generationJob.update({ where: { id: job.id }, data: { status: "generating" } });
+
+  const generated = await generateCardsFromText({
+    slideText: sourceText,
+    filename: job.sourceFilename,
+    styleReferenceCards,
+  });
+
+  if (!generated.length) {
+    await prisma.generationJob.update({
+      where: { id: job.id },
+      data: { status: "failed", error: "No groundable cards could be drawn from this source." },
+    });
+    return;
+  }
+
+  await prisma.$transaction([
+    ...generated.map((card) =>
+      prisma.aiDraft.create({
+        data: {
+          jobId: job.id,
+          generatedFront: card.front,
+          generatedBack: card.back,
+          sourceCitation: card.citation,
+        },
+      })
+    ),
+    prisma.generationJob.update({ where: { id: job.id }, data: { status: "ready" } }),
+  ]);
+}
+
+async function processReviewJob(job: { id: string; deckId: string }) {
+  await prisma.generationJob.update({ where: { id: job.id }, data: { status: "generating" } });
+
+  const cards = await prisma.card.findMany({
+    where: { deckId: job.deckId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, front: true, back: true },
+  });
+
+  const flags = [];
+  for (let i = 0; i < cards.length; i += REVIEW_BATCH_SIZE) {
+    const batch = cards.slice(i, i + REVIEW_BATCH_SIZE);
+    flags.push(...(await reviewCards(batch)));
+  }
+
+  await prisma.$transaction([
+    ...flags.map((flag) =>
+      prisma.aiDraft.create({
+        data: {
+          jobId: job.id,
+          generatedFront: flag.front,
+          generatedBack: flag.back,
+          issue: flag.issue,
+          originalCardId: flag.cardId,
+        },
+      })
+    ),
+    prisma.generationJob.update({ where: { id: job.id }, data: { status: "ready" } }),
+  ]);
+}
 
 async function processJob(bullJob: Job<GenerationJobPayload>) {
   const { jobId } = bullJob.data;
@@ -12,49 +95,11 @@ async function processJob(bullJob: Job<GenerationJobPayload>) {
   if (!job) return;
 
   try {
-    await prisma.generationJob.update({ where: { id: jobId }, data: { status: "extracting" } });
-
-    const pdfBuffer = await fs.readFile(job.uploadPath);
-    const pdfBase64 = pdfBuffer.toString("base64");
-
-    const slideText = await extractPdfText({ pdfBase64, filename: job.sourceFilename });
-
-    const styleReferenceCards = await prisma.card.findMany({
-      where: { deckId: job.deckId },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-      select: { front: true, back: true },
-    });
-
-    await prisma.generationJob.update({ where: { id: jobId }, data: { status: "generating" } });
-
-    const generated = await generateCardsFromText({
-      slideText,
-      filename: job.sourceFilename,
-      styleReferenceCards,
-    });
-
-    if (!generated.length) {
-      await prisma.generationJob.update({
-        where: { id: jobId },
-        data: { status: "failed", error: "No groundable cards could be drawn from this PDF." },
-      });
-      return;
+    if (job.kind === "review") {
+      await processReviewJob(job);
+    } else {
+      await processImportJob(job);
     }
-
-    await prisma.$transaction([
-      ...generated.map((card) =>
-        prisma.aiDraft.create({
-          data: {
-            jobId,
-            generatedFront: card.front,
-            generatedBack: card.back,
-            sourceCitation: card.citation,
-          },
-        })
-      ),
-      prisma.generationJob.update({ where: { id: jobId }, data: { status: "ready" } }),
-    ]);
   } catch (err) {
     console.error(`[generation-worker] job ${jobId} failed:`, err);
     await prisma.generationJob.update({

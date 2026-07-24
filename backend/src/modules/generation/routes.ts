@@ -15,6 +15,8 @@ function toDTO(job: Awaited<ReturnType<typeof loadJob>>): GenerationJobDTO {
     id: job.id,
     deckId: job.deckId,
     status: job.status,
+    kind: job.kind,
+    sourceType: job.sourceType,
     sourceFilename: job.sourceFilename,
     error: job.error,
     createdAt: job.createdAt.toISOString(),
@@ -26,13 +28,20 @@ function toDTO(job: Awaited<ReturnType<typeof loadJob>>): GenerationJobDTO {
       editedFront: d.editedFront,
       editedBack: d.editedBack,
       sourceCitation: d.sourceCitation,
+      issue: d.issue,
+      originalCardId: d.originalCardId,
+      originalFront: d.originalCard?.front ?? null,
+      originalBack: d.originalCard?.back ?? null,
       status: d.status,
     })),
   };
 }
 
 function loadJob(jobId: string) {
-  return prisma.generationJob.findUnique({ where: { id: jobId }, include: { drafts: true } });
+  return prisma.generationJob.findUnique({
+    where: { id: jobId },
+    include: { drafts: { include: { originalCard: true } } },
+  });
 }
 
 export async function generationRoutes(app: FastifyInstance) {
@@ -85,6 +94,83 @@ export async function generationRoutes(app: FastifyInstance) {
     return reply.code(202).send({ job: toDTO({ ...job, drafts: [] }) });
   });
 
+  app.post<{ Params: { id: string }; Body: { url?: string } }>("/api/decks/:id/generate-url", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+
+    const deck = await prisma.deck.findFirst({ where: { id: req.params.id, ownerId: user.userId } });
+    if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
+
+    const url = req.body?.url?.trim();
+    if (!url) return reply.code(400).send({ error: "missing_url", message: "Enter a URL to import." });
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error();
+    } catch {
+      return reply.code(400).send({ error: "invalid_url", message: "Enter a valid http(s) URL." });
+    }
+
+    const allowed = await consumeDailyQuota(user.userId, "generation", env.dailyGenerationQuota);
+    if (!allowed) {
+      return reply.code(429).send({
+        error: "quota_exceeded",
+        message: `Daily generation limit (${env.dailyGenerationQuota}) reached. Try again tomorrow.`,
+      });
+    }
+
+    const job = await prisma.generationJob.create({
+      data: {
+        deckId: deck.id,
+        requestedById: user.userId,
+        kind: "import",
+        sourceType: "url",
+        sourceFilename: url,
+        sourceUrl: url,
+        status: "queued",
+      },
+    });
+
+    await generationQueue.add("generate", { jobId: job.id });
+
+    return reply.code(202).send({ job: toDTO({ ...job, drafts: [] }) });
+  });
+
+  app.post<{ Params: { id: string } }>("/api/decks/:id/review", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+
+    const deck = await prisma.deck.findFirst({ where: { id: req.params.id, ownerId: user.userId } });
+    if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
+
+    const cardCount = await prisma.card.count({ where: { deckId: deck.id } });
+    if (cardCount === 0) {
+      return reply.code(400).send({ error: "empty_deck", message: "This deck has no cards to review yet." });
+    }
+
+    const allowed = await consumeDailyQuota(user.userId, "deck_review", env.dailyDeckReviewQuota);
+    if (!allowed) {
+      return reply.code(429).send({
+        error: "quota_exceeded",
+        message: `Daily AI-review limit (${env.dailyDeckReviewQuota}) reached. Try again tomorrow.`,
+      });
+    }
+
+    const job = await prisma.generationJob.create({
+      data: {
+        deckId: deck.id,
+        requestedById: user.userId,
+        kind: "review",
+        sourceType: "pdf",
+        sourceFilename: deck.name,
+        status: "queued",
+      },
+    });
+
+    await generationQueue.add("generate", { jobId: job.id });
+
+    return reply.code(202).send({ job: toDTO({ ...job, drafts: [] }) });
+  });
+
   app.get<{ Params: { id: string } }>("/api/generation-jobs/:id", async (req, reply) => {
     const user = requireUser(req, reply);
     if (!user) return;
@@ -120,24 +206,28 @@ export async function generationRoutes(app: FastifyInstance) {
       const edited = front !== draft.generatedFront || back !== draft.generatedBack;
 
       const card = await prisma.$transaction(async (tx) => {
-        const created = await tx.card.create({
-          data: {
-            deckId: draft.job.deckId,
-            front,
-            back,
-            source: draft.sourceCitation ? `AI · ${draft.sourceCitation}` : "AI",
-          },
-        });
+        const resulting = draft.originalCardId
+          ? await tx.card.update({ where: { id: draft.originalCardId }, data: { front, back } })
+          : await tx.card.create({
+              data: {
+                deckId: draft.job.deckId,
+                front,
+                back,
+                source: draft.sourceCitation ? `AI · ${draft.sourceCitation}` : "AI",
+              },
+            });
         await tx.aiDraft.update({
           where: { id: draft.id },
           data: {
             status: "accepted",
-            resultingCardId: created.id,
+            // resultingCardId is unique per card: only set it for imports, which mint a brand-new card.
+            // Review drafts point at an existing card (originalCardId) that may be reviewed again later.
+            resultingCardId: draft.originalCardId ? undefined : resulting.id,
             editedFront: edited ? front : draft.editedFront,
             editedBack: edited ? back : draft.editedBack,
           },
         });
-        return created;
+        return resulting;
       });
 
       await maybeFinalizeJobAndCleanup(draft.jobId);
@@ -176,7 +266,7 @@ async function maybeFinalizeJobAndCleanup(jobId: string) {
   const job = await prisma.generationJob.findUnique({ where: { id: jobId }, include: { drafts: true } });
   if (!job) return;
   const allResolved = job.drafts.length > 0 && job.drafts.every((d) => d.status !== "pending");
-  if (allResolved) {
+  if (allResolved && job.uploadPath) {
     await fs.unlink(job.uploadPath).catch(() => {});
   }
 }

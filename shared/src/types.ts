@@ -33,10 +33,16 @@ export type GenerationJobStatus =
   | "ready"
   | "failed";
 
+/** "import" drafts cards from a fresh PDF/URL source; "review" checks existing deck cards for issues. */
+export type GenerationJobKind = "import" | "review";
+export type GenerationSourceType = "pdf" | "url";
+
 export interface GenerationJobDTO {
   id: string;
   deckId: string;
   status: GenerationJobStatus;
+  kind: GenerationJobKind;
+  sourceType: GenerationSourceType;
   sourceFilename: string;
   error: string | null;
   createdAt: string;
@@ -53,6 +59,12 @@ export interface AiDraftDTO {
   editedFront: string | null;
   editedBack: string | null;
   sourceCitation: string | null;
+  /** Set for "review" jobs: what's wrong with the original card. */
+  issue: string | null;
+  /** Set for "review" jobs: the existing card this draft would overwrite. */
+  originalCardId: string | null;
+  originalFront: string | null;
+  originalBack: string | null;
   status: AiDraftStatus;
 }
 

@@ -4,12 +4,12 @@ export interface GeneratedCard {
   citation: string | null;
 }
 
-export const GENERATION_SYSTEM_PROMPT = `You produce flashcards from OCR'd lecture-slide text for university students.
+export const GENERATION_SYSTEM_PROMPT = `You produce flashcards from source text (transcribed lecture slides, or the text of a webpage) for university students.
 
-The text you're given was transcribed slide-by-slide, with "=== Slide N ===" markers separating each slide.
+The text you're given is marked with "=== Slide N ===" or "=== Section: <heading> ===" markers separating each part of the source.
 
 Rules:
-- Every card MUST be grounded in the provided text. Include a short "citation" string naming the slide it came from (e.g. "Slide 14"), taken from the nearest marker above the fact.
+- Every card MUST be grounded in the provided text. Include a short "citation" string naming the slide or section it came from (e.g. "Slide 14" or "Section: Overview"), taken from the nearest marker above the fact.
 - If you cannot find a grounded citation for a fact, do not produce a card for it.
 - Match the voice and level of detail of the example cards from this deck, if any are given.
 - Keep the front a concise question or prompt; keep the back concise (1-3 sentences, or a short list). Do not pad answers.
@@ -20,6 +20,21 @@ export const GRADING_SYSTEM_PROMPT = `You grade a student's typed answer against
 
 Respond with ONLY JSON: {"score": number (0-100), "feedback": string (1-2 sentences), "missing": string[] (key points the student omitted, empty array if none)}.
 Be generous with phrasing/wording differences; be strict about factual correctness and completeness relative to the reference answer.`;
+
+export const REVIEW_SYSTEM_PROMPT = `You are a fact-checking and quality reviewer for a set of existing student flashcards.
+
+You will be given a numbered list of flashcards (front = question/prompt, back = answer). Flag ONLY cards with a genuine problem:
+- a factual error in the answer,
+- an answer that's misleading, ambiguous, or internally contradictory,
+- an answer that's badly out of date or wrong given standard academic consensus.
+
+Do NOT flag a card just because it could be phrased more elegantly, more concisely, or differently in style — only flag real knowledge/correctness issues.
+
+For each flagged card, provide: its "index" (matching the number in the list), a one-sentence "issue" explaining what's wrong, and a corrected "front"/"back" pair that fixes it while keeping the same topic and roughly the same length as the original.
+
+Preserve mathematical notation using LaTeX, wrapped in $...$ for inline or $$...$$ for block formulae.
+
+Respond with ONLY a JSON array: [{"index": number, "issue": string, "front": string, "back": string}]. Cards with no issue must NOT appear in the array. If no cards have issues, respond with [].`;
 
 export function buildGenerationUserPrompt(params: {
   slideText: string;
@@ -33,7 +48,12 @@ export function buildGenerationUserPrompt(params: {
         .join("\n\n")}`
     : "This deck has no existing cards yet — use a plain, direct academic tone.";
 
-  return `${styleBlock}\n\nOCR'd slide text (file: ${params.filename}):\n\n${params.slideText}\n\nGenerate flashcards for the slides above.`;
+  return `${styleBlock}\n\nSource text (from: ${params.filename}):\n\n${params.slideText}\n\nGenerate flashcards for the source text above.`;
+}
+
+export function buildReviewUserPrompt(cards: { front: string; back: string }[]): string {
+  const list = cards.map((c, i) => `${i + 1}. Q: ${c.front}\n   A: ${c.back}`).join("\n\n");
+  return `Review these ${cards.length} flashcards:\n\n${list}`;
 }
 
 export function buildGradingUserPrompt(params: {
@@ -67,6 +87,48 @@ export function parseGeneratedCards(text: string, providerName: string): Generat
       citation: c.citation ? String(c.citation).trim() : null,
     }))
     .filter((c) => c.front && c.back);
+}
+
+export interface ReviewFlag {
+  cardId: string;
+  issue: string;
+  front: string;
+  back: string;
+}
+
+/** Maps the model's 1-indexed flags back onto the original card ids, dropping anything malformed or out of range. */
+export function parseReviewFlags(
+  text: string,
+  providerName: string,
+  cards: { id: string; front: string; back: string }[]
+): ReviewFlag[] {
+  const start = text.indexOf("[");
+  const end = text.lastIndexOf("]");
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`No JSON array found in ${providerName}'s response.`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.slice(start, end + 1));
+  } catch {
+    throw new Error(`${providerName} did not return valid JSON for the review result.`);
+  }
+  if (!Array.isArray(parsed)) throw new Error("Expected a JSON array of flagged cards.");
+
+  return parsed
+    .filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null)
+    .map((c) => {
+      const index = Number(c.index);
+      const card = Number.isInteger(index) ? cards[index - 1] : undefined;
+      if (!card) return null;
+      const front = String(c.front ?? "").trim();
+      const back = String(c.back ?? "").trim();
+      const issue = String(c.issue ?? "").trim();
+      if (!front || !back || !issue) return null;
+      return { cardId: card.id, issue, front, back };
+    })
+    .filter((f): f is ReviewFlag => f !== null);
 }
 
 export function parseGradingResult(

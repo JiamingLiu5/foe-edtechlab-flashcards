@@ -28,6 +28,8 @@ export const env = {
   maxUploadBytes: Number(process.env.MAX_UPLOAD_MB ?? 20) * 1024 * 1024,
   dailyGenerationQuota: Number(process.env.DAILY_GENERATION_QUOTA ?? 10),
   dailyGradingQuota: Number(process.env.DAILY_GRADING_QUOTA ?? 50),
+  dailyDeckReviewQuota: Number(process.env.DAILY_DECK_REVIEW_QUOTA ?? 5),
+  maxUrlFetchBytes: Number(process.env.MAX_URL_FETCH_MB ?? 5) * 1024 * 1024,
   smtp: {
     host: process.env.SMTP_HOST ?? "",
     port: Number(process.env.SMTP_PORT ?? 587),

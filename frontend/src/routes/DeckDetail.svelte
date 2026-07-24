@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { CardDTO } from "@flashcards/shared";
-  import { api } from "../lib/api";
+  import { api, ApiError } from "../lib/api";
   import { navigate } from "../lib/router";
   import Katex from "../lib/Math.svelte";
 
@@ -65,18 +65,39 @@
     await load();
   }
 
+  let reviewing = false;
+  let reviewError = "";
+
+  async function startAiReview() {
+    if (cards.length === 0) return;
+    reviewing = true;
+    reviewError = "";
+    try {
+      const { job } = await api.startDeckReview(deckId);
+      navigate(`/decks/${deckId}/jobs/${job.id}/review`);
+    } catch (e) {
+      reviewError = e instanceof ApiError ? e.message : "Couldn't start AI review.";
+      reviewing = false;
+    }
+  }
+
   onMount(load);
 </script>
 
 <button class="back" on:click={() => navigate("/decks")}>&larr; All decks</button>
 
 <div class="actions">
-  <button class="btn" on:click={() => navigate(`/decks/${deckId}/import`)}>Import PDF</button>
+  <button class="btn" on:click={() => navigate(`/decks/${deckId}/import`)}>Import cards</button>
+  <button class="btn" on:click={startAiReview} disabled={reviewing || cards.length === 0} title="Have AI check this deck's cards for factual or clarity issues">
+    {reviewing ? "Starting review…" : "AI review"}
+  </button>
   <button class="btn" on:click={() => navigate(`/decks/${deckId}/study`)}>Study</button>
   <button class="btn" on:click={() => navigate(`/decks/${deckId}/quiz`)}>Quiz</button>
   <button class="btn" on:click={() => navigate(`/decks/${deckId}/selfcheck`)}>Self-check</button>
   <a class="btn" href={api.exportAnkiUrl(deckId)}>Export (Anki)</a>
 </div>
+
+{#if reviewError}<p class="error">{reviewError}</p>{/if}
 
 <div class="card-surface add-card">
   <div class="add-card-header">
@@ -119,6 +140,7 @@
   .back:hover { color: var(--text); }
   .actions { display: flex; gap: 0.6rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
   .actions a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+  .error { color: var(--bad); margin-bottom: 1rem; }
   .add-card { padding: 1.1rem; margin-bottom: 1.5rem; }
   .add-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
   .add-card h3 { margin: 0; }

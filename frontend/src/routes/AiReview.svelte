@@ -15,13 +15,15 @@
   let editBack = "";
   let timer: ReturnType<typeof setInterval>;
 
-  const STATUS_LABEL: Record<string, string> = {
+  $: isReview = job?.kind === "review";
+
+  $: STATUS_LABEL = {
     queued: "Queued…",
-    extracting: "Reading PDF…",
-    generating: "Drafting cards with Claude…",
+    extracting: job?.sourceType === "url" ? "Reading the page…" : "Reading PDF…",
+    generating: isReview ? "Checking your deck for issues…" : "Drafting cards with Claude…",
     ready: "Ready for review",
     failed: "Failed",
-  };
+  } as Record<string, string>;
 
   async function poll() {
     try {
@@ -63,7 +65,7 @@
 </script>
 
 <button class="back" on:click={() => navigate(`/decks/${deckId}`)}>&larr; Back to deck</button>
-<h1>AI review</h1>
+<h1>{isReview ? "AI deck review" : "AI review"}</h1>
 
 {#if error}
   <p class="error">{error}</p>
@@ -74,9 +76,13 @@
 {:else if job.status === "failed"}
   <p class="error">{job.error ?? "Generation failed."}</p>
 {:else if job.drafts.length === 0}
-  <p class="muted">No groundable cards could be drawn from this PDF.</p>
+  <p class="muted">{isReview ? "No issues found — this deck looks solid." : "No groundable cards could be drawn from this source."}</p>
 {:else}
-  <p class="muted">Each card below cites where in the PDF it came from. Nothing is added to your deck until you accept it.</p>
+  <p class="muted">
+    {isReview
+      ? "AI flagged these cards as possibly having a factual or clarity issue. Nothing changes in your deck until you accept a fix."
+      : "Each card below cites where in the source it came from. Nothing is added to your deck until you accept it."}
+  </p>
 
   {#if allResolved}
     <p class="done card-surface">All drafts resolved. <button class="btn btn-primary" on:click={() => navigate(`/decks/${deckId}`)}>Back to deck</button></p>
@@ -94,14 +100,22 @@
           </div>
         {:else}
           <div class="diff">
+            {#if isReview}
+              <div class="issue">⚠️ {draft.issue}</div>
+              <div class="original muted small">
+                <div><s><Katex text={draft.originalFront ?? ""} /></s></div>
+                <div><s><Katex text={draft.originalBack ?? ""} /></s></div>
+              </div>
+              <div class="arrow muted small">suggested fix ↓</div>
+            {/if}
             <div class="front"><Katex text={draft.generatedFront} /></div>
             <div class="back muted"><Katex text={draft.generatedBack} /></div>
             {#if draft.sourceCitation}<div class="citation">📎 {draft.sourceCitation}</div>{/if}
           </div>
           <div class="row">
-            <button class="btn btn-primary" on:click={() => accept(draft, false)}>Accept</button>
+            <button class="btn btn-primary" on:click={() => accept(draft, false)}>{isReview ? "Accept fix" : "Accept"}</button>
             <button class="btn" on:click={() => startEdit(draft)}>Edit</button>
-            <button class="btn btn-danger" on:click={() => discard(draft)}>Discard</button>
+            <button class="btn btn-danger" on:click={() => discard(draft)}>{isReview ? "Keep original" : "Discard"}</button>
           </div>
         {/if}
       </li>
@@ -114,7 +128,7 @@
       {#each resolved as draft}
         <li class="card-surface draft resolved-item">
           <div class="front"><Katex text={draft.editedFront ?? draft.generatedFront} /></div>
-          <span class="tag" class:accepted={draft.status === "accepted"}>{draft.status}</span>
+          <span class="tag" class:accepted={draft.status === "accepted"}>{draft.status === "accepted" ? (isReview ? "fixed" : "accepted") : (isReview ? "kept original" : "discarded")}</span>
         </li>
       {/each}
     </ul>
@@ -129,6 +143,9 @@
   .draft { padding: 1rem; }
   .front { font-weight: 600; margin-bottom: 0.35rem; }
   .citation { margin-top: 0.5rem; font-size: 0.8rem; color: var(--accent); }
+  .issue { color: var(--warn); font-size: 0.85rem; margin-bottom: 0.6rem; }
+  .original { margin-bottom: 0.4rem; }
+  .arrow { margin-bottom: 0.4rem; }
   .row { display: flex; gap: 0.5rem; margin-top: 0.8rem; }
   .draft textarea, .draft input { width: 100%; margin-bottom: 0.5rem; }
   .resolved-item { display: flex; justify-content: space-between; align-items: center; opacity: 0.7; }

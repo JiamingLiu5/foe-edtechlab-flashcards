@@ -56,8 +56,9 @@ model Card {
   source    String?
   createdAt DateTime @default(now())
 
-  reviews     Review[]
-  originDraft AiDraft?
+  reviews      Review[]
+  originDraft  AiDraft?  @relation("AiDraftResult")
+  reviewDrafts AiDraft[] @relation("AiDraftOrigin")
 
   @@map("cards")
   @@index([deckId])
@@ -71,18 +72,32 @@ enum GenerationJobStatus {
   failed
 }
 
+/// "import" drafts cards from a fresh source (PDF/URL); "review" checks existing deck cards for issues.
+enum GenerationJobKind {
+  import
+  review
+}
+
+enum GenerationSourceType {
+  pdf
+  url
+}
+
 model GenerationJob {
-  id             String              @id @default(uuid())
+  id             String               @id @default(uuid())
   deckId         String
-  deck           Deck                @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  deck           Deck                 @relation(fields: [deckId], references: [id], onDelete: Cascade)
   requestedById  String
-  requestedBy    User                @relation(fields: [requestedById], references: [id], onDelete: Cascade)
-  status         GenerationJobStatus @default(queued)
+  requestedBy    User                 @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+  status         GenerationJobStatus  @default(queued)
+  kind           GenerationJobKind    @default(import)
+  sourceType     GenerationSourceType @default(pdf)
   sourceFilename String
-  uploadPath     String
+  sourceUrl      String?
+  uploadPath     String?
   error          String?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   drafts AiDraft[]
 
@@ -105,13 +120,17 @@ model AiDraft {
   editedFront     String?
   editedBack      String?
   sourceCitation  String?
+  issue           String?
+  originalCardId  String?
+  originalCard    Card?         @relation("AiDraftOrigin", fields: [originalCardId], references: [id], onDelete: Cascade)
   status          AiDraftStatus @default(pending)
   resultingCardId String?       @unique
-  resultingCard   Card?         @relation(fields: [resultingCardId], references: [id])
+  resultingCard   Card?         @relation("AiDraftResult", fields: [resultingCardId], references: [id])
   createdAt       DateTime      @default(now())
 
   @@map("ai_drafts")
   @@index([jobId])
+  @@index([originalCardId])
 }
 
 enum ReviewOutcome {

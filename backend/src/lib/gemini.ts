@@ -3,11 +3,15 @@ import { env } from "../env.js";
 import {
   GENERATION_SYSTEM_PROMPT,
   GRADING_SYSTEM_PROMPT,
+  REVIEW_SYSTEM_PROMPT,
   buildGenerationUserPrompt,
   buildGradingUserPrompt,
+  buildReviewUserPrompt,
   parseGeneratedCards,
   parseGradingResult,
+  parseReviewFlags,
   type GeneratedCard,
+  type ReviewFlag,
 } from "./aiPrompts.js";
 
 const genai = new GoogleGenAI({ apiKey: env.geminiApiKey });
@@ -61,6 +65,20 @@ export async function generateCardsFromText(params: {
   });
 
   return parseGeneratedCards(response.text ?? "", "Gemini");
+}
+
+/**
+ * Fallback for deck-knowledge review when no Anthropic API key is configured —
+ * same prompt/parsing contract as the Claude path in lib/claude.ts.
+ */
+export async function reviewCards(cards: { id: string; front: string; back: string }[]): Promise<ReviewFlag[]> {
+  const response = await genai.models.generateContent({
+    model: env.geminiModelGeneration,
+    config: { systemInstruction: REVIEW_SYSTEM_PROMPT },
+    contents: [{ role: "user", parts: [{ text: buildReviewUserPrompt(cards) }] }],
+  });
+
+  return parseReviewFlags(response.text ?? "", "Gemini", cards);
 }
 
 /**

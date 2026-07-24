@@ -19,7 +19,7 @@ class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     credentials: "include",
-    headers: init?.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
+    headers: init?.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : undefined,
     ...init,
   });
 
@@ -55,6 +55,10 @@ export const api = {
     form.append("file", file);
     return request<{ job: GenerationJobDTO }>(`/decks/${deckId}/generate`, { method: "POST", body: form });
   },
+  importUrl: (deckId: string, url: string) =>
+    request<{ job: GenerationJobDTO }>(`/decks/${deckId}/generate-url`, { method: "POST", body: JSON.stringify({ url }) }),
+  startDeckReview: (deckId: string) =>
+    request<{ job: GenerationJobDTO }>(`/decks/${deckId}/review`, { method: "POST", body: JSON.stringify({}) }),
   getJob: (jobId: string) => request<{ job: GenerationJobDTO }>(`/generation-jobs/${jobId}`),
   acceptDraft: (jobId: string, draftId: string, edited?: { front: string; back: string }) =>
     request<{ card: CardDTO }>(`/generation-jobs/${jobId}/drafts/${draftId}/accept`, {

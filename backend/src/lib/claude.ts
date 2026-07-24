@@ -4,14 +4,18 @@ import * as gemini from "./gemini.js";
 import {
   GENERATION_SYSTEM_PROMPT,
   GRADING_SYSTEM_PROMPT,
+  REVIEW_SYSTEM_PROMPT,
   buildGenerationUserPrompt,
   buildGradingUserPrompt,
+  buildReviewUserPrompt,
   parseGeneratedCards,
   parseGradingResult,
+  parseReviewFlags,
   type GeneratedCard,
+  type ReviewFlag,
 } from "./aiPrompts.js";
 
-export type { GeneratedCard };
+export type { GeneratedCard, ReviewFlag };
 
 export const anthropic = new Anthropic({ apiKey: env.anthropicApiKey });
 
@@ -42,6 +46,26 @@ export async function generateCardsFromText(params: {
     .join("\n");
 
   return parseGeneratedCards(text, "Claude");
+}
+
+export async function reviewCards(cards: { id: string; front: string; back: string }[]): Promise<ReviewFlag[]> {
+  if (usingGemini) {
+    return gemini.reviewCards(cards);
+  }
+
+  const message = await anthropic.messages.create({
+    model: env.anthropicModelGeneration,
+    max_tokens: 4096,
+    system: REVIEW_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: buildReviewUserPrompt(cards) }],
+  });
+
+  const text = message.content
+    .filter((block) => block.type === "text")
+    .map((block) => (block as { text: string }).text)
+    .join("\n");
+
+  return parseReviewFlags(text, "Claude", cards);
 }
 
 export async function gradeSelfCheckAnswer(params: {
