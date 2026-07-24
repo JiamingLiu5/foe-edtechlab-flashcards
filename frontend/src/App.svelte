@@ -13,12 +13,14 @@
   import Study from "./routes/Study.svelte";
   import Quiz from "./routes/Quiz.svelte";
   import SelfCheck from "./routes/SelfCheck.svelte";
+  import AdminUsers from "./routes/AdminUsers.svelte";
 
   onMount(refreshSession);
 
   $: path = $currentPath;
   $: authChecked = $currentUser !== undefined;
   $: isLoggedIn = !!$currentUser;
+  $: isAdmin = $currentUser?.role === "admin";
 
   $: deckIdParams = matchRoute("/decks/:id", path);
   $: importParams = matchRoute("/decks/:id/import", path);
@@ -26,6 +28,7 @@
   $: studyParams = matchRoute("/decks/:id/study", path);
   $: quizParams = matchRoute("/decks/:id/quiz", path);
   $: selfCheckParams = matchRoute("/decks/:id/selfcheck", path);
+  $: isAdminRoute = path === "/admin";
   $: isLibrary = path === "/decks" || path === "/" || path === "/login" || path === "";
 
   async function logout() {
@@ -44,11 +47,16 @@
     <header class="topbar">
       <button class="brand" on:click={() => navigate("/decks")}>Flashcards</button>
       <div class="spacer"></div>
+      {#if isAdmin}
+        <button class="btn" on:click={() => navigate("/admin")}>Admin</button>
+      {/if}
       <span class="muted">{$currentUser?.email}</span>
       <button class="btn" on:click={logout}>Sign out</button>
     </header>
     <main>
-      {#if selfCheckParams}
+      {#if isAdminRoute && isAdmin}
+        <AdminUsers />
+      {:else if selfCheckParams}
         <SelfCheck deckId={selfCheckParams.id} />
       {:else if quizParams}
         <Quiz deckId={quizParams.id} />

@@ -32,4 +32,7 @@ export const env = {
   maxUrlFetchBytes: Number(process.env.MAX_URL_FETCH_MB ?? 5) * 1024 * 1024,
   testLoginSecret: process.env.TEST_LOGIN_SECRET ?? "",
   testLoginEmail: process.env.TEST_LOGIN_EMAIL ?? "",
+  adminEmail: process.env.ADMIN_EMAIL ?? "",
+  adminPassword: process.env.ADMIN_PASSWORD ?? "",
+  adminName: process.env.ADMIN_NAME ?? "",
 };

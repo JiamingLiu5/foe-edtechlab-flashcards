@@ -7,17 +7,24 @@
   let email = "";
   let password = "";
   let error = "";
+  let info = "";
   let loading = false;
 
   async function submit() {
     error = "";
+    info = "";
     loading = true;
     try {
-      const { user } = mode === "login"
-        ? await api.login(email.trim(), password)
-        : await api.signup(email.trim(), password);
-      currentUser.set(user);
-      navigate("/decks");
+      if (mode === "login") {
+        const { user } = await api.login(email.trim(), password);
+        currentUser.set(user);
+        navigate("/decks");
+      } else {
+        const res = await api.signup(email.trim(), password);
+        info = res.message;
+        mode = "login";
+        password = "";
+      }
     } catch (e) {
       error = e instanceof ApiError ? e.message : "Something went wrong.";
     } finally {
@@ -28,6 +35,7 @@
   function toggleMode() {
     mode = mode === "login" ? "signup" : "login";
     error = "";
+    info = "";
   }
 </script>
 
@@ -59,6 +67,7 @@
       </button>
     </form>
     {#if error}<p class="error">{error}</p>{/if}
+    {#if info}<p class="info">{info}</p>{/if}
 
     <button class="btn link" on:click={toggleMode}>
       {mode === "login" ? "Need an account? Create one" : "Already have an account? Sign in"}
@@ -87,6 +96,7 @@
     margin-top: 1.25rem;
   }
   .error { color: var(--bad); margin-top: 0.75rem; }
+  .info { color: var(--accent); margin-top: 0.75rem; }
   .link {
     margin-top: 1rem;
     background: none;

@@ -8,12 +8,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  user
+  admin
+}
+
+enum UserStatus {
+  pending
+  approved
+  rejected
+  deactivated
+}
+
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
+  id           String     @id @default(uuid())
+  email        String     @unique
   passwordHash String
   displayName  String?
-  createdAt    DateTime @default(now())
+  role         UserRole   @default(user)
+  status       UserStatus @default(approved)
+  createdAt    DateTime   @default(now())
 
   decks       Deck[]
   reviews     Review[]

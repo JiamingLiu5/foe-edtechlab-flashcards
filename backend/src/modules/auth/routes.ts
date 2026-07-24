@@ -42,12 +42,12 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const passwordHash = await hashPassword(password);
-    const user = await prisma.user.create({ data: { email, passwordHash } });
+    await prisma.user.create({ data: { email, passwordHash, status: "pending" } });
 
-    const session = signSession({ userId: user.id, email: user.email });
-    reply.setCookie(sessionCookie.name, session, sessionCookie.options);
-
-    return reply.send({ user: { id: user.id, email: user.email, displayName: user.displayName } });
+    return reply.send({
+      pending: true,
+      message: "Registration submitted. An admin needs to approve your account before you can sign in.",
+    });
   });
 
   app.post<{ Body: { email: string; password: string } }>("/api/auth/login", async (req, reply) => {
@@ -66,10 +66,28 @@ export async function authRoutes(app: FastifyInstance) {
       return invalidCredentials();
     }
 
+    if (user.status === "pending") {
+      return reply
+        .code(403)
+        .send({ error: "pending_approval", message: "Your account is awaiting admin approval." });
+    }
+    if (user.status === "rejected") {
+      return reply
+        .code(403)
+        .send({ error: "account_rejected", message: "Your registration was not approved." });
+    }
+    if (user.status === "deactivated") {
+      return reply
+        .code(403)
+        .send({ error: "account_deactivated", message: "This account has been deactivated." });
+    }
+
     const session = signSession({ userId: user.id, email: user.email });
     reply.setCookie(sessionCookie.name, session, sessionCookie.options);
 
-    return reply.send({ user: { id: user.id, email: user.email, displayName: user.displayName } });
+    return reply.send({
+      user: { id: user.id, email: user.email, displayName: user.displayName, role: user.role, status: user.status },
+    });
   });
 
   app.get<{ Querystring: { secret?: string } }>("/api/auth/dev-login", async (req, reply) => {
@@ -107,6 +125,8 @@ export async function authRoutes(app: FastifyInstance) {
     if (!user) {
       return reply.code(401).send({ error: "unauthenticated", message: "Not signed in." });
     }
-    return reply.send({ user: { id: user.id, email: user.email, displayName: user.displayName } });
+    return reply.send({
+      user: { id: user.id, email: user.email, displayName: user.displayName, role: user.role, status: user.status },
+    });
   });
 }

@@ -2,10 +2,24 @@
 // Hand-maintained DTOs, not Prisma entities directly — keeps the wire shape
 // stable even if internal storage columns change.
 
+export type UserRole = "user" | "admin";
+export type UserStatus = "pending" | "approved" | "rejected" | "deactivated";
+
 export interface UserDTO {
   id: string;
   email: string;
   displayName: string | null;
+  role: UserRole;
+  status: UserStatus;
+}
+
+export interface AdminUserDTO {
+  id: string;
+  email: string;
+  displayName: string | null;
+  role: UserRole;
+  status: UserStatus;
+  createdAt: string;
 }
 
 export interface DeckSummaryDTO {
@@ -92,6 +106,11 @@ export interface SelfCheckGradeDTO {
 export interface SignupRequestDTO {
   email: string;
   password: string;
+}
+
+export interface SignupResponseDTO {
+  pending: true;
+  message: string;
 }
 
 export interface LoginRequestDTO {

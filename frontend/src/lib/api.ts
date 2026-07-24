@@ -1,4 +1,5 @@
 import type {
+  AdminUserDTO,
   AiDraftDTO,
   CardDTO,
   DeckSummaryDTO,
@@ -7,6 +8,7 @@ import type {
   ReviewOutcome,
   ReviewResultDTO,
   SelfCheckGradeDTO,
+  SignupResponseDTO,
   UserDTO,
 } from "@flashcards/shared";
 
@@ -35,11 +37,19 @@ export { ApiError };
 
 export const api = {
   signup: (email: string, password: string) =>
-    request<{ user: UserDTO }>("/auth/signup", { method: "POST", body: JSON.stringify({ email, password }) }),
+    request<SignupResponseDTO>("/auth/signup", { method: "POST", body: JSON.stringify({ email, password }) }),
   login: (email: string, password: string) =>
     request<{ user: UserDTO }>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   me: () => request<{ user: UserDTO }>("/auth/me"),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
+
+  adminListUsers: () => request<{ users: AdminUserDTO[] }>("/admin/users"),
+  adminApprove: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/approve`, { method: "POST" }),
+  adminReject: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/reject`, { method: "POST" }),
+  adminDeactivate: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/deactivate`, { method: "POST" }),
+  adminReactivate: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/reactivate`, { method: "POST" }),
+  adminPromote: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/promote`, { method: "POST" }),
+  adminDemote: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/demote`, { method: "POST" }),
 
   listDecks: () => request<{ decks: DeckSummaryDTO[] }>("/decks"),
   createDeck: (name: string) => request<{ deck: DeckSummaryDTO }>("/decks", { method: "POST", body: JSON.stringify({ name }) }),
@@ -82,4 +92,4 @@ export const api = {
   exportAnkiUrl: (deckId: string) => `/api/decks/${deckId}/export/anki`,
 };
 
-export type { AiDraftDTO, CardDTO, DeckSummaryDTO, GenerationJobDTO, UserDTO };
+export type { AdminUserDTO, AiDraftDTO, CardDTO, DeckSummaryDTO, GenerationJobDTO, UserDTO };
