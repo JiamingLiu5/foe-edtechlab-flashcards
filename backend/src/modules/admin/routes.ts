@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../db.js";
 import { requireAdmin } from "../auth/plugin.js";
@@ -101,6 +102,39 @@ export async function adminRoutes(app: FastifyInstance) {
       data: { role: "user" },
     });
     return reply.send({ user: toAdminUserDTO(user) });
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/admin/users/:id", async (req, reply) => {
+    const admin = requireAdmin(req, reply);
+    if (!admin) return;
+    if (req.params.id === admin.userId) {
+      return reply.code(400).send({ error: "cannot_self_remove", message: "You can't remove your own account." });
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, role: true, jobsCreated: { select: { uploadPath: true } } },
+    });
+    if (!targetUser) return reply.code(404).send({ error: "not_found", message: "User not found." });
+
+    if (targetUser.role === "admin") {
+      const adminCount = await prisma.user.count({ where: { role: "admin" } });
+      if (adminCount <= 1) {
+        return reply.code(400).send({
+          error: "cannot_remove_last_admin",
+          message: "At least one administrator account must remain.",
+        });
+      }
+    }
+
+    const { count: deletedCount } = await prisma.user.deleteMany({ where: { id: targetUser.id } });
+    if (deletedCount === 0) return reply.code(404).send({ error: "not_found", message: "User not found." });
+
+    // The database cascades the user's decks, cards, reviews, jobs, and drafts.
+    // Uploaded PDFs live outside the database, so remove their files separately.
+    await Promise.all(targetUser.jobsCreated.map(({ uploadPath }) => (uploadPath ? fs.unlink(uploadPath).catch(() => {}) : undefined)));
+
+    return reply.send({ ok: true });
   });
 
   app.get<{ Params: { id: string } }>("/api/admin/users/:id/decks", async (req, reply) => {

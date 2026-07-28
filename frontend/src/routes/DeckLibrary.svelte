@@ -60,9 +60,17 @@
         <div class="deck-stats muted">
           {deck.cardCount} card{deck.cardCount === 1 ? "" : "s"}
           {#if deck.dueCount > 0}<span class="pill due">{deck.dueCount} due</span>{/if}
-          {#if deck.forgottenCount > 0}<span class="pill forgotten">{deck.forgottenCount} forgotten</span>{/if}
+          {#if deck.forgottenCount >= 3}<span class="pill forgotten">Needs Attention · {deck.forgottenCount}</span>{/if}
         </div>
-        <span class="delete" role="button" tabindex="0" on:click={(e) => removeDeck(deck.id, e)}>Delete</span>
+        <span
+          class="delete"
+          role="button"
+          tabindex="0"
+          on:click={(e) => removeDeck(deck.id, e)}
+          on:keydown={(e) => {
+            if (e.key === "Enter" || e.key === " ") removeDeck(deck.id, e as unknown as MouseEvent);
+          }}
+        >Delete</span>
       </button>
     {/each}
   </div>

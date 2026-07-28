@@ -65,6 +65,9 @@
   <div
     class="dropzone card-surface"
     class:drag={dragOver}
+    on:keydown={(event) => {
+      if (event.key === "Enter" || event.key === " ") fileInput?.click();
+    }}
     on:dragover|preventDefault={() => (dragOver = true)}
     on:dragleave={() => (dragOver = false)}
     on:drop={onDrop}

@@ -18,7 +18,7 @@ export async function cardRoutes(app: FastifyInstance) {
     return reply.send({ cards });
   });
 
-  app.post<{ Params: { id: string }; Body: { front: string; back: string } | { cards: { front: string; back: string }[] } }>(
+  app.post<{ Params: { id: string }; Body: { front: string; back: string; tags?: string[] } | { cards: { front: string; back: string; tags?: string[] }[] } }>(
     "/api/decks/:id/cards",
     async (req, reply) => {
       const user = requireUser(req, reply);
@@ -28,12 +28,16 @@ export async function cardRoutes(app: FastifyInstance) {
       if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
 
       const body = req.body as any;
-      const items: { front: string; back: string }[] = Array.isArray(body?.cards)
+      const items: { front: string; back: string; tags?: string[] }[] = Array.isArray(body?.cards)
         ? body.cards
         : [{ front: body?.front, back: body?.back }];
 
       const cleaned = items
-        .map((c) => ({ front: (c.front ?? "").trim(), back: (c.back ?? "").trim() }))
+        .map((c) => ({
+          front: (c.front ?? "").trim(),
+          back: (c.back ?? "").trim(),
+          tags: [...new Set((c.tags ?? []).map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 20),
+        }))
         .filter((c) => c.front && c.back);
 
       if (!cleaned.length) {
@@ -42,7 +46,7 @@ export async function cardRoutes(app: FastifyInstance) {
 
       const created = await prisma.$transaction(
         cleaned.map((c) =>
-          prisma.card.create({ data: { deckId: deck.id, front: c.front, back: c.back, source: "manual" } })
+          prisma.card.create({ data: { deckId: deck.id, front: c.front, back: c.back, tags: c.tags, source: "manual" } })
         )
       );
 
@@ -50,7 +54,7 @@ export async function cardRoutes(app: FastifyInstance) {
     }
   );
 
-  app.patch<{ Params: { id: string; cardId: string }; Body: { front?: string; back?: string } }>(
+  app.patch<{ Params: { id: string; cardId: string }; Body: { front?: string; back?: string; tags?: string[] } }>(
     "/api/decks/:id/cards/:cardId",
     async (req, reply) => {
       const user = requireUser(req, reply);
@@ -67,6 +71,9 @@ export async function cardRoutes(app: FastifyInstance) {
         data: {
           front: req.body?.front?.trim() || card.front,
           back: req.body?.back?.trim() || card.back,
+          tags: req.body?.tags
+            ? [...new Set(req.body.tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 20)
+            : card.tags,
         },
       });
       return reply.send({ card: updated });

@@ -36,6 +36,7 @@ export interface CardDTO {
   deckId: string;
   front: string;
   back: string;
+  tags: string[];
   source: string | null;
   createdAt: string;
 }
@@ -93,8 +94,10 @@ export interface ReviewResultDTO {
 }
 
 export interface DueCardDTO {
-  card: CardDTO;
+  card: CardDTO | null;
   isNew: boolean;
+  nextDueAt: string | null;
+  intervalPreviews: Record<ReviewOutcome, number>;
 }
 
 export interface SelfCheckGradeDTO {

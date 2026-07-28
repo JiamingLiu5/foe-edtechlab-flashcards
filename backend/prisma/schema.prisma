@@ -55,6 +55,7 @@ model Card {
   deck      Deck     @relation(fields: [deckId], references: [id], onDelete: Cascade)
   front     String
   back      String
+  tags      String[] @default([])
   source    String?
   createdAt DateTime @default(now())
 
@@ -152,6 +153,7 @@ model Review {
   outcome      ReviewOutcome
   easeFactor   Float
   intervalDays Int
+  repetitions  Int           @default(0)
   dueAt        DateTime
 
   @@map("reviews")

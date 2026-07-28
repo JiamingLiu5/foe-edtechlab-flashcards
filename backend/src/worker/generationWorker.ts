@@ -102,7 +102,9 @@ async function processJob(bullJob: Job<GenerationJobPayload>) {
     }
   } catch (err) {
     console.error(`[generation-worker] job ${jobId} failed:`, err);
-    await prisma.generationJob.update({
+    // The owner may have deleted their account while this job was processing.
+    // updateMany makes that race a clean no-op instead of causing needless retries.
+    await prisma.generationJob.updateMany({
       where: { id: jobId },
       data: { status: "failed", error: err instanceof Error ? err.message : "Unknown error" },
     });

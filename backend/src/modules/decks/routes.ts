@@ -92,12 +92,11 @@ async function countDue(cardIds: string[], userId: string, now: Date): Promise<n
 }
 
 async function countForgotten(cardIds: string[], userId: string): Promise<number> {
-  const latestReviews = await latestReviewPerCard(cardIds, userId);
-  let forgotten = 0;
-  for (const review of latestReviews.values()) {
-    if (review.outcome === "again") forgotten += 1;
-  }
-  return forgotten;
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+  return prisma.review.count({
+    where: { userId, cardId: { in: cardIds }, outcome: "again", reviewedAt: { gte: since } },
+  });
 }
 
 async function latestReviewPerCard(cardIds: string[], userId: string) {

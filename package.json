@@ -12,6 +12,7 @@
     "dev:worker": "npm run dev:worker -w backend",
     "dev:frontend": "npm run dev -w frontend",
     "build": "npm run build -w shared && npm run prisma:generate && npm run build -w backend && npm run build -w frontend",
+    "test": "npm run test -w backend",
     "prisma:generate": "npm run prisma:generate -w backend",
     "prisma:migrate": "npm run prisma:migrate -w backend"
   },

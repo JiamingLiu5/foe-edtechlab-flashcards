@@ -50,6 +50,7 @@ export const api = {
   adminReactivate: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/reactivate`, { method: "POST" }),
   adminPromote: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/promote`, { method: "POST" }),
   adminDemote: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/demote`, { method: "POST" }),
+  adminRemoveUser: (id: string) => request<{ ok: true }>(`/admin/users/${id}`, { method: "DELETE" }),
   adminListUserDecks: (id: string) => request<{ user: AdminUserDTO; decks: DeckSummaryDTO[] }>(`/admin/users/${id}/decks`),
   adminListDeckCards: (deckId: string) =>
     request<{ deck: { id: string; name: string; ownerId: string; createdAt: string }; cards: CardDTO[] }>(
@@ -61,9 +62,9 @@ export const api = {
   deleteDeck: (id: string) => request<{ ok: true }>(`/decks/${id}`, { method: "DELETE" }),
 
   listCards: (deckId: string) => request<{ cards: CardDTO[] }>(`/decks/${deckId}/cards`),
-  createCard: (deckId: string, front: string, back: string) =>
-    request<{ cards: CardDTO[] }>(`/decks/${deckId}/cards`, { method: "POST", body: JSON.stringify({ front, back }) }),
-  createCardsBulk: (deckId: string, cards: { front: string; back: string }[]) =>
+  createCard: (deckId: string, front: string, back: string, tags: string[] = []) =>
+    request<{ cards: CardDTO[] }>(`/decks/${deckId}/cards`, { method: "POST", body: JSON.stringify({ front, back, tags }) }),
+  createCardsBulk: (deckId: string, cards: { front: string; back: string; tags?: string[] }[]) =>
     request<{ cards: CardDTO[] }>(`/decks/${deckId}/cards`, { method: "POST", body: JSON.stringify({ cards }) }),
   deleteCard: (deckId: string, cardId: string) => request<{ ok: true }>(`/decks/${deckId}/cards/${cardId}`, { method: "DELETE" }),
 
@@ -85,7 +86,7 @@ export const api = {
   discardDraft: (jobId: string, draftId: string) =>
     request<{ ok: true }>(`/generation-jobs/${jobId}/drafts/${draftId}/discard`, { method: "POST" }),
 
-  nextDueCard: (deckId: string) => request<DueCardDTO & { card: CardDTO | null }>(`/decks/${deckId}/study/next`),
+  nextDueCard: (deckId: string) => request<DueCardDTO>(`/decks/${deckId}/study/next`),
   submitReview: (cardId: string, outcome: ReviewOutcome) =>
     request<ReviewResultDTO>("/reviews", { method: "POST", body: JSON.stringify({ cardId, outcome }) }),
   getQuiz: (deckId: string) =>

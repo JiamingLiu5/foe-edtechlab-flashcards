@@ -4,10 +4,6 @@ import { requireUser } from "../auth/plugin.js";
 import { nextSm2State } from "../../lib/sm2.js";
 import type { ReviewOutcome } from "@flashcards/shared";
 
-async function latestReview(userId: string, cardId: string) {
-  return prisma.review.findFirst({ where: { userId, cardId }, orderBy: { reviewedAt: "desc" } });
-}
-
 export async function studyRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>("/api/decks/:id/study/next", async (req, reply) => {
     const user = requireUser(req, reply);
@@ -18,14 +14,36 @@ export async function studyRoutes(app: FastifyInstance) {
 
     const cards = await prisma.card.findMany({ where: { deckId: deck.id }, orderBy: { createdAt: "asc" } });
     const now = new Date();
+    const reviews = await prisma.review.findMany({
+      where: { userId: user.userId, cardId: { in: cards.map((card) => card.id) } },
+      orderBy: { reviewedAt: "desc" },
+    });
+    const latest = new Map<string, (typeof reviews)[number]>();
+    for (const review of reviews) if (!latest.has(review.cardId)) latest.set(review.cardId, review);
 
-    for (const card of cards) {
-      const review = await latestReview(user.userId, card.id);
-      if (!review) return reply.send({ card, isNew: true });
-      if (review.dueAt <= now) return reply.send({ card, isNew: false });
-    }
+    const due = cards
+      .filter((card) => !latest.has(card.id) || latest.get(card.id)!.dueAt <= now)
+      .sort((a, b) => {
+        const aDue = latest.get(a.id)?.dueAt.getTime() ?? 0;
+        const bDue = latest.get(b.id)?.dueAt.getTime() ?? 0;
+        return aDue - bDue;
+      });
+    const card = due[0] ?? null;
+    const current = card ? latest.get(card.id) : undefined;
+    const previous = current
+      ? { easeFactor: current.easeFactor, intervalDays: current.intervalDays, repetitions: current.repetitions }
+      : null;
+    const intervalPreviews = Object.fromEntries(
+      (["again", "hard", "good", "easy"] as ReviewOutcome[]).map((outcome) => [
+        outcome,
+        nextSm2State(previous, outcome).intervalDays,
+      ])
+    );
+    const nextDueAt = card
+      ? null
+      : [...latest.values()].sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())[0]?.dueAt.toISOString() ?? null;
 
-    return reply.send({ card: null, isNew: false });
+    return reply.send({ card, isNew: !!card && !current, nextDueAt, intervalPreviews });
   });
 
   app.post<{ Body: { cardId: string; outcome: ReviewOutcome } }>("/api/reviews", async (req, reply) => {
@@ -42,8 +60,16 @@ export async function studyRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: "not_found", message: "Card not found." });
     }
 
-    const previous = await latestReview(user.userId, cardId);
-    const next = nextSm2State(previous ? { easeFactor: previous.easeFactor, intervalDays: previous.intervalDays } : null, outcome);
+    const previous = await prisma.review.findFirst({
+      where: { userId: user.userId, cardId },
+      orderBy: { reviewedAt: "desc" },
+    });
+    const next = nextSm2State(
+      previous
+        ? { easeFactor: previous.easeFactor, intervalDays: previous.intervalDays, repetitions: previous.repetitions }
+        : null,
+      outcome
+    );
 
     const review = await prisma.review.create({
       data: {
@@ -52,6 +78,7 @@ export async function studyRoutes(app: FastifyInstance) {
         outcome,
         easeFactor: next.easeFactor,
         intervalDays: next.intervalDays,
+        repetitions: next.repetitions,
         dueAt: next.dueAt,
       },
     });

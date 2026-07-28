@@ -66,3 +66,27 @@ Utilitarian and fast — the existing light, high-contrast card-panel look (blue
 
 ## Source
 Feature priorities above come from [`Flashcard_Expectation_From_Students_Summary.md`](./Flashcard_Expectation_From_Students_Summary.md) (9 Imperial students, Microsoft Forms, 13–17 July 2026). Respondent tags (R1–R9) match that document.
+
+## Week 3 implementation
+
+The full-stack prototype now includes:
+
+- SM-2 scheduling with persisted repetition/ease state, overdue-first queues, interval previews, and next-due metrics.
+- Safe KaTeX rendering in study, quiz, self-check, AI review, and deck question-bank views.
+- Manual single/bulk creation with multiline fields, LaTeX preview, tags, text search, and tag filtering.
+- Asynchronous PDF/URL generation with explicit queue states and per-draft accept/edit/discard review.
+- A native Anki `.apkg` export containing a SQLite collection and media manifest.
+- Rolling 30-day lapse counts and a “Needs Attention” deck badge after three failed recalls.
+- Redis-backed daily generation, deck-review, and AI-grading quotas.
+- Admin user/deck inspection protected by server-side admin authorization.
+
+Apply the latest schema and run the checks before local development:
+
+```sh
+npm run dev:infra
+npm run prisma:migrate
+npm test
+npm run build
+```
+
+Copy `infra/.env.example` to `infra/.env` and supply real Gemini/Anthropic credentials for live AI flows. Never commit that file.

@@ -36,6 +36,21 @@
     }
   }
 
+  async function removeUser(user: AdminUserDTO) {
+    if (!confirm(`Remove ${user.email}? This permanently deletes their decks, cards, reviews, and pending imports.`)) return;
+
+    busyId = user.id;
+    error = "";
+    try {
+      await api.adminRemoveUser(user.id);
+      users = users.filter((candidate) => candidate.id !== user.id);
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : "Failed to remove user.";
+    } finally {
+      busyId = "";
+    }
+  }
+
   onMount(load);
 </script>
 
@@ -82,6 +97,9 @@
                 <button class="btn" disabled={busyId === user.id} on:click={() => act(user.id, api.adminPromote)}>Make admin</button>
               {:else if user.role === "admin" && user.id !== $currentUser?.id}
                 <button class="btn" disabled={busyId === user.id} on:click={() => act(user.id, api.adminDemote)}>Remove admin</button>
+              {/if}
+              {#if user.id !== $currentUser?.id}
+                <button class="btn btn-danger" disabled={busyId === user.id} on:click={() => removeUser(user)}>Remove user</button>
               {/if}
             </td>
           </tr>

@@ -11,9 +11,19 @@
   let loading = true;
   let front = "";
   let back = "";
+  let tags = "";
   let bulkText = "";
   let showBulk = false;
   let saving = false;
+  let search = "";
+  let tagFilter = "";
+
+  $: allTags = [...new Set(cards.flatMap((card) => card.tags))].sort();
+  $: visibleCards = cards.filter((card) => {
+    const query = search.trim().toLowerCase();
+    return (!query || card.front.toLowerCase().includes(query) || card.back.toLowerCase().includes(query))
+      && (!tagFilter || card.tags.includes(tagFilter));
+  });
 
   async function load() {
     loading = true;
@@ -26,9 +36,10 @@
     if (!front.trim() || !back.trim()) return;
     saving = true;
     try {
-      await api.createCard(deckId, front.trim(), back.trim());
+      await api.createCard(deckId, front.trim(), back.trim(), tags.split(",").map((tag) => tag.trim()).filter(Boolean));
       front = "";
       back = "";
+      tags = "";
       await load();
     } finally {
       saving = false;
@@ -111,11 +122,26 @@
     <button class="btn btn-primary" on:click={addBulk} disabled={saving}>Add all</button>
   {:else}
     <form on:submit|preventDefault={addCard}>
-      <input placeholder="Front" bind:value={front} />
-      <input placeholder="Back" bind:value={back} />
+      <textarea rows="2" placeholder="Front (LaTeX supported)" bind:value={front}></textarea>
+      <textarea rows="2" placeholder="Back (LaTeX supported)" bind:value={back}></textarea>
+      <input placeholder="Tags, comma separated" bind:value={tags} />
       <button class="btn btn-primary" type="submit" disabled={saving}>Add card</button>
     </form>
+    {#if front || back}
+      <div class="preview">
+        <strong>Preview</strong>
+        <Katex text={front || "Front"} /> <span class="muted">→</span> <Katex text={back || "Back"} />
+      </div>
+    {/if}
   {/if}
+</div>
+
+<div class="filters">
+  <input type="search" placeholder="Search questions and answers…" bind:value={search} />
+  <select bind:value={tagFilter} aria-label="Filter by tag">
+    <option value="">All tags</option>
+    {#each allTags as tag}<option value={tag}>{tag}</option>{/each}
+  </select>
 </div>
 
 {#if loading}
@@ -124,11 +150,12 @@
   <p class="muted">No cards yet.</p>
 {:else}
   <ul class="card-list">
-    {#each cards as card}
+    {#each visibleCards as card}
       <li class="card-surface">
         <div class="front"><Katex text={card.front} /></div>
         <div class="back muted"><Katex text={card.back} /></div>
         {#if card.source && card.source !== "manual"}<div class="source muted small">{card.source}</div>{/if}
+        {#if card.tags.length}<div class="tags">{#each card.tags as tag}<span>{tag}</span>{/each}</div>{/if}
         <button class="delete" on:click={() => removeCard(card.id)}>Delete</button>
       </li>
     {/each}
@@ -145,9 +172,14 @@
   .add-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
   .add-card h3 { margin: 0; }
   .add-card form { display: flex; gap: 0.6rem; flex-wrap: wrap; }
-  .add-card input { flex: 1; min-width: 180px; }
+  .add-card input, .add-card form textarea { flex: 1; min-width: 180px; }
   .add-card textarea { width: 100%; margin-bottom: 0.6rem; font-family: monospace; }
   .small { font-size: 0.8rem; }
+  .preview { width: 100%; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .filters { display: flex; gap: 0.6rem; margin-bottom: 1rem; }
+  .filters input { flex: 1; }
+  .tags { display: flex; gap: 0.35rem; margin-top: 0.5rem; }
+  .tags span { font-size: 0.72rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: var(--surface-2); color: var(--text-dim); }
   .card-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
   .card-list li { padding: 0.9rem 1rem; position: relative; }
   .front { font-weight: 600; margin-bottom: 0.3rem; }
