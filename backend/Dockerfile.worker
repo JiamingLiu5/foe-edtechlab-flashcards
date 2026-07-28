@@ -4,7 +4,7 @@ WORKDIR /repo
 COPY package.json package-lock.json* tsconfig.base.json ./
 COPY shared/package.json shared/
 COPY backend/package.json backend/
-RUN npm ci
+RUN apk add --no-cache python3 make g++ && npm ci
 
 COPY shared shared
 COPY backend backend
@@ -19,7 +19,9 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json* tsconfig.base.json ./
 COPY shared/package.json shared/
 COPY backend/package.json backend/
-RUN npm ci --omit=dev
+RUN apk add --no-cache --virtual .native-build-deps python3 make g++ \
+  && npm ci --omit=dev \
+  && apk del .native-build-deps
 
 COPY --from=build /repo/shared/dist shared/dist
 COPY --from=build /repo/backend/dist backend/dist
