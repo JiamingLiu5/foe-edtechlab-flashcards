@@ -77,10 +77,10 @@ export async function gradeSelfCheckAnswer(params: {
   question: string;
   referenceAnswer: string;
   studentAnswer: string;
-}): Promise<{ score: number; feedback: string; missing: string[] }> {
+}, signal?: AbortSignal): Promise<{ score: number; feedback: string; missing: string[] }> {
   return withRetry(async () => {
     if (usingGemini) {
-      return gemini.gradeSelfCheckAnswer(params);
+      return gemini.gradeSelfCheckAnswer(params, signal);
     }
 
     const message = await anthropic.messages.create({
@@ -88,7 +88,7 @@ export async function gradeSelfCheckAnswer(params: {
       max_tokens: 512,
       system: GRADING_SYSTEM_PROMPT,
       messages: [{ role: "user", content: buildGradingUserPrompt(params) }],
-    });
+    }, signal ? { signal } : undefined);
 
     const text = message.content
       .filter((block) => block.type === "text")

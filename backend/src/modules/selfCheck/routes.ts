@@ -2,8 +2,11 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../../db.js";
 import { env } from "../../env.js";
 import { requireUser } from "../auth/plugin.js";
-import { consumeDailyQuota } from "../../lib/quota.js";
+import { consumeDailyQuota, releaseDailyQuota } from "../../lib/quota.js";
 import { gradeSelfCheckAnswer } from "../../lib/claude.js";
+import { isRetryableAiError } from "../../lib/retry.js";
+
+const AI_GRADING_TIMEOUT_MS = 40_000;
 
 export async function selfCheckRoutes(app: FastifyInstance) {
   app.post<{ Body: { cardId: string; answer: string } }>("/api/self-check/grade", async (req, reply) => {
@@ -28,12 +31,35 @@ export async function selfCheckRoutes(app: FastifyInstance) {
       });
     }
 
-    const result = await gradeSelfCheckAnswer({
-      question: card.front,
-      referenceAnswer: card.back,
-      studentAnswer: answer,
-    });
-
-    return reply.send(result);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_GRADING_TIMEOUT_MS);
+    try {
+      const result = await gradeSelfCheckAnswer(
+        {
+          question: card.front,
+          referenceAnswer: card.back,
+          studentAnswer: answer,
+        },
+        controller.signal
+      );
+      return reply.send(result);
+    } catch (error) {
+      await releaseDailyQuota(user.userId, "grading");
+      if (controller.signal.aborted) {
+        return reply.code(504).send({
+          error: "ai_timeout",
+          message: "AI grading is taking too long. Please try again.",
+        });
+      }
+      if (isRetryableAiError(error)) {
+        return reply.code(503).send({
+          error: "ai_unavailable",
+          message: "AI grading is temporarily unavailable. Please try again.",
+        });
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   });
 }

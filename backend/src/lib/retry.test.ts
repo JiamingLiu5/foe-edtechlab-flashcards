@@ -6,6 +6,7 @@ test("classifies transient provider statuses for retry", () => {
   assert.equal(isRetryableAiError(Object.assign(new Error("unavailable"), { status: 503 })), true);
   assert.equal(isRetryableAiError(Object.assign(new Error("rate limited"), { status: 429 })), true);
   assert.equal(isRetryableAiError(Object.assign(new Error("connection failed"), { status: 0 })), true);
+  assert.equal(isRetryableAiError(Object.assign(new Error("request aborted"), { name: "AbortError" })), false);
   assert.equal(isRetryableAiError(Object.assign(new Error("bad request"), { status: 400 })), false);
   assert.equal(isRetryableAiError(Object.assign(new Error("unauthorized"), { status: 401 })), false);
 });

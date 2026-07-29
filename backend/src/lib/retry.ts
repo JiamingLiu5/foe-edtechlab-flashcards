@@ -8,6 +8,9 @@ type ErrorWithStatus = Error & { status?: unknown };
 export function isRetryableAiError(error: unknown): boolean {
   if (!error || typeof error !== "object") return true;
 
+  // A caller-imposed deadline must stop the retry loop immediately.
+  if ((error as Error).name === "AbortError") return false;
+
   const status = (error as ErrorWithStatus).status;
   // SDK and parsing errors without an HTTP status are retried: model output can
   // be malformed on one request, and connection errors typically have no status.

@@ -92,14 +92,17 @@ export async function studyRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get<{ Params: { id: string } }>("/api/decks/:id/quiz", async (req, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { mode?: string } }>("/api/decks/:id/quiz", async (req, reply) => {
     const user = requireUser(req, reply);
     if (!user) return;
 
     const deck = await prisma.deck.findFirst({ where: { id: req.params.id, ownerId: user.userId } });
     if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
 
-    const cards = await prisma.card.findMany({ where: { deckId: deck.id } });
+    const cards = await prisma.card.findMany({ where: { deckId: deck.id, includeInQuiz: true } });
+    if (req.query.mode === "fill") {
+      return reply.send({ questions: shuffle(cards).map((card) => ({ cardId: card.id, front: card.front, back: card.back })) });
+    }
     if (cards.length < 4) {
       return reply.send({ questions: [] });
     }

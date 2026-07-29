@@ -92,10 +92,10 @@ export async function gradeSelfCheckAnswer(params: {
   question: string;
   referenceAnswer: string;
   studentAnswer: string;
-}): Promise<{ score: number; feedback: string; missing: string[] }> {
+}, signal?: AbortSignal): Promise<{ score: number; feedback: string; missing: string[] }> {
   const response = await genai.models.generateContent({
     model: env.geminiModelGrading,
-    config: { systemInstruction: GRADING_SYSTEM_PROMPT },
+    config: { systemInstruction: GRADING_SYSTEM_PROMPT, abortSignal: signal },
     contents: [{ role: "user", parts: [{ text: buildGradingUserPrompt(params) }] }],
   });
 

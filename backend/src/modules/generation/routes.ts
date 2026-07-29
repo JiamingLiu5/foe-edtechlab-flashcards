@@ -214,6 +214,10 @@ export async function generationRoutes(app: FastifyInstance) {
                 front,
                 back,
                 source: draft.sourceCitation ? `AI · ${draft.sourceCitation}` : "AI",
+                // Ask the owner whether to include new AI cards in quizzes
+                // immediately after acceptance; manual and existing cards keep
+                // the schema default of true.
+                includeInQuiz: false,
               },
             });
         await tx.aiDraft.update({

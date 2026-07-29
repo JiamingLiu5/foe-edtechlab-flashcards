@@ -68,7 +68,7 @@
         <AdminUserDecks userId={adminUserDecksParams.id} />
       {:else if selfCheckParams}
         <SelfCheck deckId={selfCheckParams.id} />
-      {:else if quizModeParams && (quizModeParams.mode === "mcq" || quizModeParams.mode === "fill")}
+      {:else if quizModeParams && (quizModeParams.mode === "mcq" || quizModeParams.mode === "fill" || quizModeParams.mode === "mix")}
         <Quiz deckId={quizModeParams.id} mode={quizModeParams.mode} />
       {:else if quizParams}
         <Quiz deckId={quizParams.id} />

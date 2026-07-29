@@ -66,7 +66,7 @@ export const api = {
     request<{ cards: CardDTO[] }>(`/decks/${deckId}/cards`, { method: "POST", body: JSON.stringify({ front, back, tags }) }),
   createCardsBulk: (deckId: string, cards: { front: string; back: string; tags?: string[] }[]) =>
     request<{ cards: CardDTO[] }>(`/decks/${deckId}/cards`, { method: "POST", body: JSON.stringify({ cards }) }),
-  updateCard: (deckId: string, cardId: string, card: { front: string; back: string; tags?: string[] }) =>
+  updateCard: (deckId: string, cardId: string, card: { front: string; back: string; tags?: string[]; includeInQuiz?: boolean }) =>
     request<{ card: CardDTO }>(`/decks/${deckId}/cards/${cardId}`, { method: "PATCH", body: JSON.stringify(card) }),
   deleteCard: (deckId: string, cardId: string) => request<{ ok: true }>(`/decks/${deckId}/cards/${cardId}`, { method: "DELETE" }),
 
@@ -93,9 +93,22 @@ export const api = {
     request<ReviewResultDTO>("/reviews", { method: "POST", body: JSON.stringify({ cardId, outcome }) }),
   getQuiz: (deckId: string) =>
     request<{ questions: { cardId: string; front: string; options: string[]; answer: string }[] }>(`/decks/${deckId}/quiz`),
+  getFillQuiz: (deckId: string) =>
+    request<{ questions: { cardId: string; front: string; back: string }[] }>(`/decks/${deckId}/quiz?mode=fill`),
 
-  gradeSelfCheck: (cardId: string, answer: string) =>
-    request<SelfCheckGradeDTO>("/self-check/grade", { method: "POST", body: JSON.stringify({ cardId, answer }) }),
+  gradeSelfCheck: async (cardId: string, answer: string) => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45_000);
+    try {
+      return await request<SelfCheckGradeDTO>("/self-check/grade", {
+        method: "POST",
+        body: JSON.stringify({ cardId, answer }),
+        signal: controller.signal,
+      });
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  },
 
   exportAnkiUrl: (deckId: string) => `/api/decks/${deckId}/export/anki`,
 };

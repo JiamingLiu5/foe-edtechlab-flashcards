@@ -57,6 +57,7 @@ model Card {
   back      String
   tags      String[] @default([])
   source    String?
+  includeInQuiz Boolean @default(true)
   createdAt DateTime @default(now())
 
   reviews      Review[]

@@ -1,17 +1,20 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { CardDTO, SelfCheckGradeDTO } from "@flashcards/shared";
+  import type { SelfCheckGradeDTO } from "@flashcards/shared";
   import { api, ApiError } from "../lib/api";
   import { navigate } from "../lib/router";
   import Katex from "../lib/Math.svelte";
 
   export let deckId: string;
-  export let mode: "mcq" | "fill" | undefined = undefined;
+  export let mode: "mcq" | "fill" | "mix" | undefined = undefined;
 
   type Question = { cardId: string; front: string; options: string[]; answer: string };
+  type FillQuestion = { cardId: string; front: string; back: string };
+  type MixedQuestion = { kind: "mcq" | "fill"; cardId: string; front: string; back: string; options: string[]; answer: string };
 
   let questions: Question[] = [];
-  let fillQuestions: CardDTO[] = [];
+  let fillQuestions: FillQuestion[] = [];
+  let mixedQuestions: MixedQuestion[] = [];
   let index = 0;
   let selected: string | null = null;
   let typedAnswer = "";
@@ -19,7 +22,9 @@
   let checking = false;
   let fillResult: SelfCheckGradeDTO | null = null;
   let fillError = "";
-  let score = 0;
+  let mcqScore = 0;
+  let fillScore = 0;
+  let fillAnswered = 0;
   let loading = true;
 
   async function load() {
@@ -31,21 +36,32 @@
     checking = false;
     fillResult = null;
     fillError = "";
-    score = 0;
+    mcqScore = 0;
+    fillScore = 0;
+    fillAnswered = 0;
     if (mode === "mcq") {
       const res = await api.getQuiz(deckId);
       questions = res.questions;
     } else if (mode === "fill") {
-      const res = await api.listCards(deckId);
-      fillQuestions = shuffle(res.cards);
+      const res = await api.getFillQuiz(deckId);
+      fillQuestions = res.questions;
+    } else if (mode === "mix") {
+      const [mcq, fill] = await Promise.all([api.getQuiz(deckId), api.getFillQuiz(deckId)]);
+      const mcqByCardId = new Map(mcq.questions.map((question) => [question.cardId, question]));
+      mixedQuestions = fill.questions.map((question) => {
+        const multipleChoice = mcqByCardId.get(question.cardId);
+        return multipleChoice && Math.random() < 0.5
+          ? { kind: "mcq", ...multipleChoice, back: multipleChoice.answer }
+          : { kind: "fill", ...question, options: [], answer: question.back };
+      });
     }
     loading = false;
   }
 
-  function choose(option: string) {
+  function choose(option: string, answer: string) {
     if (selected) return;
     selected = option;
-    if (option === questions[index].answer) score += 1;
+    if (option === answer) mcqScore += 1;
   }
 
   function next() {
@@ -58,17 +74,22 @@
   }
 
   async function checkFillAnswer() {
-    const question = fillQuestions[index];
+    const question = mode === "fill" ? fillQuestions[index] : mixedQuestions[index];
     if (!typedAnswer.trim() || !question || fillChecked || checking) return;
 
     checking = true;
     fillError = "";
     try {
-      fillResult = await api.gradeSelfCheck(question.id, typedAnswer.trim());
-      score += fillResult.score;
+      fillResult = await api.gradeSelfCheck(question.cardId, typedAnswer.trim());
+      fillScore += fillResult.score;
+      fillAnswered += 1;
       fillChecked = true;
     } catch (error) {
-      fillError = error instanceof ApiError ? error.message : "Your answer couldn't be checked right now.";
+      fillError = error instanceof ApiError
+        ? error.message
+        : error instanceof DOMException && error.name === "AbortError"
+          ? "AI grading took too long. Your answer was not submitted; please try again."
+          : "Your answer couldn't be checked right now.";
     } finally {
       checking = false;
     }
@@ -76,14 +97,18 @@
 
   onMount(load);
 
-  function shuffle<T>(items: T[]): T[] {
-    const shuffled = [...items];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
+  function totalQuestions() {
+    return mode === "mcq" ? questions.length : mode === "fill" ? fillQuestions.length : mixedQuestions.length;
   }
+
+  function isFinished() {
+    return index >= totalQuestions();
+  }
+
+  function currentMixedIsMcq() {
+    return mixedQuestions[index]?.kind === "mcq";
+  }
+
 </script>
 
 <button class="back" on:click={() => navigate(`/decks/${deckId}`)}>&larr; Back to deck</button>
@@ -99,10 +124,14 @@
       <strong>Fill in the blank</strong>
       <span class="muted">Write your answer and get feedback from your AI teacher.</span>
     </button>
+    <button class="card-surface mode-card" on:click={() => navigate(`/decks/${deckId}/quiz/mix`)}>
+      <strong>Mix</strong>
+      <span class="muted">Get a random mix of multiple-choice and AI-marked fill-in questions.</span>
+    </button>
   </div>
 {:else}
   <div class="quiz-heading">
-    <h1>{mode === "mcq" ? "Multiple-choice quiz" : "Fill-in-the-blank quiz"}</h1>
+    <h1>{mode === "mcq" ? "Multiple-choice quiz" : mode === "fill" ? "Fill-in-the-blank quiz" : "Mixed quiz"}</h1>
     <button class="btn" on:click={() => navigate(`/decks/${deckId}/quiz`)}>Change format</button>
   </div>
 
@@ -112,19 +141,27 @@
     <p class="muted">Need at least 4 cards in this deck to make a multiple-choice quiz.</p>
   {:else if mode === "fill" && fillQuestions.length === 0}
     <p class="muted">Add cards to this deck before starting a quiz.</p>
-  {:else if mode === "mcq" && index >= questions.length}
+  {:else if mode === "mix" && mixedQuestions.length === 0}
+    <p class="muted">Add cards to this deck before starting a quiz.</p>
+  {:else if mode === "mcq" && isFinished()}
     <div class="card-surface done">
-      <p>Score: {score} / {questions.length}</p>
+      <p>Score: {mcqScore} / {questions.length}</p>
       <button class="btn btn-primary" on:click={load}>Play again</button>
     </div>
-  {:else if mode === "fill" && index >= fillQuestions.length}
+  {:else if mode === "fill" && isFinished()}
     <div class="card-surface done">
-      <p>Average AI score: {Math.round(score / fillQuestions.length)}%</p>
+      <p>Average AI score: {Math.round(fillScore / fillAnswered)}%</p>
       <button class="btn btn-primary" on:click={load}>Play again</button>
     </div>
-  {:else if mode === "mcq"}
-    {@const q = questions[index]}
-    <p class="muted small">Question {index + 1} of {questions.length}</p>
+  {:else if mode === "mix" && isFinished()}
+    <div class="card-surface done">
+      <p>Multiple choice: {mcqScore} / {mixedQuestions.filter((question) => question.kind === "mcq").length}</p>
+      {#if fillAnswered}<p>Average AI score: {Math.round(fillScore / fillAnswered)}%</p>{/if}
+      <button class="btn btn-primary" on:click={load}>Play again</button>
+    </div>
+  {:else if mode === "mcq" || currentMixedIsMcq()}
+    {@const q = mode === "mcq" ? questions[index] : mixedQuestions[index]}
+    <p class="muted small">Question {index + 1} of {totalQuestions()}</p>
     <div class="card-surface question">
       <div class="front"><Katex text={q.front} /></div>
       <div class="options">
@@ -134,7 +171,7 @@
             class:correct={selected && option === q.answer}
             class:wrong={selected === option && option !== q.answer}
             disabled={!!selected}
-            on:click={() => choose(option)}
+          on:click={() => choose(option, q.answer)}
           >
             <Katex text={option} />
           </button>
@@ -145,8 +182,8 @@
       {/if}
     </div>
   {:else}
-    {@const q = fillQuestions[index]}
-    <p class="muted small">Question {index + 1} of {fillQuestions.length}</p>
+    {@const q = mode === "fill" ? fillQuestions[index] : mixedQuestions[index]}
+    <p class="muted small">Question {index + 1} of {totalQuestions()}</p>
     <form class="card-surface question" on:submit|preventDefault={checkFillAnswer}>
       <div class="front"><Katex text={q.front} /></div>
       <label for="fill-answer" class="muted small">Your answer</label>
@@ -174,7 +211,7 @@
 <style>
   .back { background: none; border: none; color: var(--text-dim); margin-bottom: 1rem; padding: 0; }
   .back:hover { color: var(--text); }
-  .mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+  .mode-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: 1.5rem; }
   .mode-card {
     color: var(--text);
     min-height: 170px;

@@ -38,6 +38,7 @@ export interface CardDTO {
   back: string;
   tags: string[];
   source: string | null;
+  includeInQuiz: boolean;
   createdAt: string;
 }
 

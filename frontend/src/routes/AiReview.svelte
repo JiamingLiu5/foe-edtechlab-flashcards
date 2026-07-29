@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import type { AiDraftDTO, GenerationJobDTO } from "@flashcards/shared";
-  import { api } from "../lib/api";
+  import type { AiDraftDTO, CardDTO, GenerationJobDTO } from "@flashcards/shared";
+  import { api, ApiError } from "../lib/api";
   import { navigate } from "../lib/router";
   import Katex from "../lib/Math.svelte";
 
@@ -14,6 +14,9 @@
   let editFront = "";
   let editBack = "";
   let timer: ReturnType<typeof setInterval>;
+  let quizPromptCard: CardDTO | null = null;
+  let quizPromptSaving = false;
+  let quizPromptError = "";
 
   $: isReview = job?.kind === "review";
 
@@ -49,9 +52,37 @@
   }
 
   async function accept(draft: AiDraftDTO, edited: boolean) {
-    await api.acceptDraft(jobId, draft.id, edited ? { front: editFront, back: editBack } : undefined);
+    const { card } = await api.acceptDraft(jobId, draft.id, edited ? { front: editFront, back: editBack } : undefined);
     editingId = null;
+    if (!isReview) {
+      quizPromptCard = card;
+      quizPromptError = "";
+    }
     await poll();
+  }
+
+  async function chooseQuizPreference(includeInQuiz: boolean) {
+    if (!quizPromptCard || quizPromptSaving) return;
+    if (!includeInQuiz) {
+      quizPromptCard = null;
+      return;
+    }
+
+    quizPromptSaving = true;
+    quizPromptError = "";
+    try {
+      await api.updateCard(deckId, quizPromptCard.id, {
+        front: quizPromptCard.front,
+        back: quizPromptCard.back,
+        tags: quizPromptCard.tags,
+        includeInQuiz: true,
+      });
+      quizPromptCard = null;
+    } catch (error) {
+      quizPromptError = error instanceof ApiError ? error.message : "Couldn't update the quiz preference.";
+    } finally {
+      quizPromptSaving = false;
+    }
   }
 
   async function discard(draft: AiDraftDTO) {
@@ -108,8 +139,8 @@
               </div>
               <div class="arrow muted small">suggested fix ↓</div>
             {/if}
-            <div class="front"><Katex text={draft.generatedFront} /></div>
-            <div class="back muted"><Katex text={draft.generatedBack} /></div>
+            <div class="front"><span class="qa-label">Q</span><Katex text={draft.generatedFront} /></div>
+            <div class="back muted"><span class="qa-label">A</span><Katex text={draft.generatedBack} /></div>
             {#if draft.sourceCitation}<div class="citation">📎 {draft.sourceCitation}</div>{/if}
           </div>
           <div class="row">
@@ -127,11 +158,27 @@
     <ul class="drafts resolved">
       {#each resolved as draft}
         <li class="card-surface draft resolved-item">
-          <div class="front"><Katex text={draft.editedFront ?? draft.generatedFront} /></div>
+          <div class="front"><span class="qa-label">Q</span><Katex text={draft.editedFront ?? draft.generatedFront} /></div>
           <span class="tag" class:accepted={draft.status === "accepted"}>{draft.status === "accepted" ? (isReview ? "fixed" : "accepted") : (isReview ? "kept original" : "discarded")}</span>
         </li>
       {/each}
     </ul>
+  {/if}
+
+  {#if quizPromptCard}
+    <div class="prompt-backdrop">
+      <dialog open class="card-surface quiz-prompt" aria-labelledby="quiz-prompt-title">
+        <h2 id="quiz-prompt-title">Use this card in quizzes?</h2>
+        <p class="muted">You accepted “{quizPromptCard.front}”. Would you like to include it in multiple-choice and fill-in-the-blank quizzes?</p>
+        {#if quizPromptError}<p class="error">{quizPromptError}</p>{/if}
+        <div class="row">
+          <button class="btn btn-primary" on:click={() => chooseQuizPreference(true)} disabled={quizPromptSaving}>
+            {quizPromptSaving ? "Saving…" : "Yes, use in quizzes"}
+          </button>
+          <button class="btn" on:click={() => chooseQuizPreference(false)} disabled={quizPromptSaving}>No, not now</button>
+        </div>
+      </dialog>
+    </div>
   {/if}
 {/if}
 
@@ -142,6 +189,8 @@
   .drafts { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.8rem; }
   .draft { padding: 1rem; }
   .front { font-weight: 600; margin-bottom: 0.35rem; }
+  .qa-label { display: inline-flex; align-items: center; justify-content: center; width: 1.35rem; height: 1.35rem; margin-right: 0.5rem; border-radius: 999px; background: var(--accent-strong); color: white; font-size: 0.72rem; vertical-align: middle; }
+  .back .qa-label { background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border); }
   .citation { margin-top: 0.5rem; font-size: 0.8rem; color: var(--accent); }
   .issue { color: var(--warn); font-size: 0.85rem; margin-bottom: 0.6rem; }
   .original { margin-bottom: 0.4rem; }
@@ -152,4 +201,8 @@
   .tag { font-size: 0.75rem; text-transform: uppercase; color: var(--bad); }
   .tag.accepted { color: var(--good); }
   .error { color: var(--bad); }
+  .prompt-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 1.5rem; background: rgba(11, 14, 20, 0.58); }
+  .quiz-prompt { width: min(100%, 460px); margin: 0; padding: 1.5rem; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32); }
+  .quiz-prompt h2 { margin: 0 0 0.65rem; }
+  .quiz-prompt p { line-height: 1.5; }
 </style>

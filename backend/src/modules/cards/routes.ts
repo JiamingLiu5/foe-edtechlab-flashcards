@@ -54,7 +54,7 @@ export async function cardRoutes(app: FastifyInstance) {
     }
   );
 
-  app.patch<{ Params: { id: string; cardId: string }; Body: { front?: string; back?: string; tags?: string[] } }>(
+  app.patch<{ Params: { id: string; cardId: string }; Body: { front?: string; back?: string; tags?: string[]; includeInQuiz?: boolean } }>(
     "/api/decks/:id/cards/:cardId",
     async (req, reply) => {
       const user = requireUser(req, reply);
@@ -74,6 +74,7 @@ export async function cardRoutes(app: FastifyInstance) {
           tags: req.body?.tags
             ? [...new Set(req.body.tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 20)
             : card.tags,
+          includeInQuiz: typeof req.body?.includeInQuiz === "boolean" ? req.body.includeInQuiz : card.includeInQuiz,
         },
       });
       return reply.send({ card: updated });
