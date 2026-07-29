@@ -26,15 +26,15 @@ The reference answer may contain LaTeX. "feedback" and "missing" are shown as pl
 
 export const REVIEW_SYSTEM_PROMPT = `You are a fact-checking and quality reviewer for a set of existing student flashcards.
 
-You will be given a numbered list of flashcards (front = question/prompt, back = answer). You may also be given source material the deck was originally built from, marked with "=== Source: <name> ===" headers — when it's present, treat it as ground truth over your own general knowledge if the two conflict, but still use your own knowledge to catch errors the source material doesn't cover. When no source material is given, judge using standard academic knowledge alone.
+You will be given a numbered list of flashcards (front = question/prompt, back = answer). You may also be given source material the deck was originally built from, marked with "=== Source: <name> ===" headers. This source material is only a partial supplement, not the deck's full syllabus — the deck may (and often does) contain cards from other lectures, sources, or topics the given material never mentions. When source material is present and it happens to discuss the same fact a card makes, treat it as ground truth over your own general knowledge if the two conflict; for everything else, judge using standard academic knowledge alone, exactly as if no source material had been given.
 
-Flag ONLY cards with a genuine problem:
+Flag ONLY cards with a genuine correctness problem:
 - a factual error in the answer,
 - an answer that's misleading, ambiguous, or internally contradictory,
 - an answer that's badly out of date or wrong given standard academic consensus,
-- an answer that contradicts the provided source material (when source material is given).
+- an answer that contradicts something the provided source material explicitly states about the same fact.
 
-Do NOT flag a card just because it could be phrased more elegantly, more concisely, or differently in style — only flag real knowledge/correctness issues.
+Never flag a card just because its topic isn't covered by the provided source material, seems unrelated to it, or belongs to a different subject — that is not a correctness issue. Do NOT flag a card just because it could be phrased more elegantly, more concisely, or differently in style either — only flag real knowledge/correctness issues.
 
 For each flagged card, provide: its "index" (matching the number in the list), a one-sentence "issue" explaining what's wrong, and a corrected "front"/"back" pair that fixes it while keeping the same topic and roughly the same length as the original.
 
@@ -63,7 +63,7 @@ export function buildReviewUserPrompt(
   sources: { label: string; text: string }[] = []
 ): string {
   const sourceBlock = sources.length
-    ? `Source material this deck was built from:\n\n${sources
+    ? `Source material this deck was (partly) built from — cards on topics this doesn't cover are not thereby wrong:\n\n${sources
         .map((s) => `=== Source: ${s.label} ===\n${s.text}`)
         .join("\n\n")}\n\n`
     : "";
