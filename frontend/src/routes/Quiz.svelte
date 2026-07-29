@@ -26,6 +26,23 @@
   let fillScore = 0;
   let fillAnswered = 0;
   let loading = true;
+  let questionCount = 0;
+  let quizFinished = false;
+  let currentMcq: Question | MixedQuestion | null = null;
+  let currentFill: FillQuestion | MixedQuestion | null = null;
+
+  $: questionCount = mode === "mcq" ? questions.length : mode === "fill" ? fillQuestions.length : mixedQuestions.length;
+  $: quizFinished = index >= questionCount;
+  $: currentMcq = mode === "mcq"
+    ? questions[index] ?? null
+    : mixedQuestions[index]?.kind === "mcq"
+      ? mixedQuestions[index]
+      : null;
+  $: currentFill = mode === "fill"
+    ? fillQuestions[index] ?? null
+    : mixedQuestions[index]?.kind === "fill"
+      ? mixedQuestions[index]
+      : null;
 
   async function load() {
     loading = true;
@@ -74,7 +91,7 @@
   }
 
   async function checkFillAnswer() {
-    const question = mode === "fill" ? fillQuestions[index] : mixedQuestions[index];
+    const question = currentFill;
     if (!typedAnswer.trim() || !question || fillChecked || checking) return;
 
     checking = true;
@@ -96,26 +113,6 @@
   }
 
   onMount(load);
-
-  function totalQuestions() {
-    return mode === "mcq" ? questions.length : mode === "fill" ? fillQuestions.length : mixedQuestions.length;
-  }
-
-  function isFinished() {
-    return index >= totalQuestions();
-  }
-
-  function currentMcqQuestion(): Question | MixedQuestion | null {
-    if (mode === "mcq") return questions[index] ?? null;
-    const question = mixedQuestions[index];
-    return question?.kind === "mcq" ? question : null;
-  }
-
-  function currentFillQuestion(): FillQuestion | MixedQuestion | null {
-    if (mode === "fill") return fillQuestions[index] ?? null;
-    const question = mixedQuestions[index];
-    return question?.kind === "fill" ? question : null;
-  }
 
 </script>
 
@@ -151,25 +148,25 @@
     <p class="muted">Add cards to this deck before starting a quiz.</p>
   {:else if mode === "mix" && mixedQuestions.length === 0}
     <p class="muted">Add cards to this deck before starting a quiz.</p>
-  {:else if mode === "mcq" && isFinished()}
+  {:else if mode === "mcq" && quizFinished}
     <div class="card-surface done">
       <p>Score: {mcqScore} / {questions.length}</p>
       <button class="btn btn-primary" on:click={load}>Play again</button>
     </div>
-  {:else if mode === "fill" && isFinished()}
+  {:else if mode === "fill" && quizFinished}
     <div class="card-surface done">
       <p>Average AI score: {Math.round(fillScore / fillAnswered)}%</p>
       <button class="btn btn-primary" on:click={load}>Play again</button>
     </div>
-  {:else if mode === "mix" && isFinished()}
+  {:else if mode === "mix" && quizFinished}
     <div class="card-surface done">
       <p>Multiple choice: {mcqScore} / {mixedQuestions.filter((question) => question.kind === "mcq").length}</p>
       {#if fillAnswered}<p>Average AI score: {Math.round(fillScore / fillAnswered)}%</p>{/if}
       <button class="btn btn-primary" on:click={load}>Play again</button>
     </div>
-  {:else if currentMcqQuestion()}
-    {@const q = currentMcqQuestion()}
-    <p class="muted small">Question {index + 1} of {totalQuestions()}</p>
+  {:else if currentMcq}
+    {@const q = currentMcq}
+    <p class="muted small">Question {index + 1} of {questionCount}</p>
     <div class="card-surface question">
       <div class="front"><Katex text={q.front} /></div>
       <div class="options">
@@ -189,9 +186,9 @@
         <button class="btn btn-primary next" on:click={next}>Next</button>
       {/if}
     </div>
-  {:else if currentFillQuestion()}
-    {@const q = currentFillQuestion()}
-    <p class="muted small">Question {index + 1} of {totalQuestions()}</p>
+  {:else if currentFill}
+    {@const q = currentFill}
+    <p class="muted small">Question {index + 1} of {questionCount}</p>
     <form class="card-surface question" on:submit|preventDefault={checkFillAnswer}>
       <div class="front"><Katex text={q.front} /></div>
       <label for="fill-answer" class="muted small">Your answer</label>
