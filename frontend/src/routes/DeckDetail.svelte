@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { CardDTO, DeckSourceDTO } from "@flashcards/shared";
+  import type { CardDTO } from "@flashcards/shared";
   import { api, ApiError } from "../lib/api";
   import { navigate } from "../lib/router";
   import Katex from "../lib/Math.svelte";
@@ -11,12 +11,6 @@
   let loading = true;
   let search = "";
   let tagFilter = "";
-
-  let sources: DeckSourceDTO[] = [];
-  let sourcesOpen = false;
-  let sourcesLoading = true;
-  let sourcesError = "";
-  let removingSourceId = "";
   let cardIndex = 0;
   let flipped = false;
   let editing = false;
@@ -44,32 +38,6 @@
     const res = await api.listCards(deckId);
     cards = res.cards;
     loading = false;
-  }
-
-  async function loadSources() {
-    sourcesLoading = true;
-    sourcesError = "";
-    try {
-      const res = await api.listSources(deckId);
-      sources = res.sources;
-    } catch (e) {
-      sourcesError = e instanceof ApiError ? e.message : "Couldn't load sources.";
-    } finally {
-      sourcesLoading = false;
-    }
-  }
-
-  async function removeSource(sourceId: string) {
-    if (!confirm("Remove this source? AI review will no longer be able to check cards against it.")) return;
-    removingSourceId = sourceId;
-    try {
-      await api.deleteSource(deckId, sourceId);
-      sources = sources.filter((s) => s.id !== sourceId);
-    } catch (e) {
-      sourcesError = e instanceof ApiError ? e.message : "Couldn't remove this source.";
-    } finally {
-      removingSourceId = "";
-    }
   }
 
   async function removeCard(cardId: string) {
@@ -142,10 +110,7 @@
     }
   }
 
-  onMount(() => {
-    load();
-    loadSources();
-  });
+  onMount(load);
 </script>
 
 <button class="back" on:click={() => navigate("/decks")}>&larr; All decks</button>
@@ -162,27 +127,6 @@
 </div>
 
 {#if reviewError}<p class="error">{reviewError}</p>{/if}
-
-{#if !sourcesLoading && sources.length > 0}
-  <div class="sources card-surface">
-    <button class="sources-toggle" on:click={() => (sourcesOpen = !sourcesOpen)}>
-      <span>📎 {sources.length} source{sources.length === 1 ? "" : "s"} grounding AI review</span>
-      <span class="muted small">{sourcesOpen ? "Hide" : "Show"}</span>
-    </button>
-    {#if sourcesError}<p class="error">{sourcesError}</p>{/if}
-    {#if sourcesOpen}
-      <ul class="source-list">
-        {#each sources as source (source.id)}
-          <li>
-            <span class="source-label">{source.sourceType === "url" ? "🔗" : "📄"} {source.label}</span>
-            <span class="muted small">{new Date(source.createdAt).toLocaleDateString()}</span>
-            <button class="delete" disabled={removingSourceId === source.id} on:click={() => removeSource(source.id)}>Remove</button>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </div>
-{/if}
 
 <div class="filters">
   <input type="search" placeholder="Search questions and answers…" bind:value={search} />
@@ -261,22 +205,6 @@
   .actions .btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
   .error { color: var(--bad); margin-bottom: 1rem; }
   .small { font-size: 0.8rem; }
-  .sources { padding: 0.9rem 1.1rem; margin-bottom: 1rem; }
-  .sources-toggle {
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: none;
-    border: none;
-    color: var(--text);
-    padding: 0;
-    font-size: 0.9rem;
-    font-weight: 600;
-  }
-  .source-list { list-style: none; margin: 0.8rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-  .source-list li { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; }
-  .source-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .filters { display: flex; gap: 0.6rem; margin-bottom: 1rem; }
   .filters input { flex: 1; }
   .tags { display: flex; gap: 0.35rem; margin-top: 0.5rem; }
