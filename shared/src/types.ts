@@ -126,3 +126,18 @@ export interface ApiErrorDTO {
   error: string;
   message: string;
 }
+
+export type QuotaBucket = "generation" | "grading" | "deck_review";
+
+export interface QuotaBucketDTO {
+  bucket: QuotaBucket;
+  label: string;
+  used: number;
+  limit: number;
+  defaultLimit: number;
+  overridden: boolean;
+}
+
+export interface AdminUserQuotaDTO {
+  buckets: QuotaBucketDTO[];
+}

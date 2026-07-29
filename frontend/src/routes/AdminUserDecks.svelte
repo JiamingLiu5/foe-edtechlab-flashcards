@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { AdminUserDTO, DeckSummaryDTO } from "@flashcards/shared";
+  import type { AdminUserDTO, DeckSummaryDTO, QuotaBucket, QuotaBucketDTO } from "@flashcards/shared";
   import { api, ApiError } from "../lib/api";
   import { navigate } from "../lib/router";
 
@@ -10,6 +10,12 @@
   let decks: DeckSummaryDTO[] = [];
   let loading = true;
   let error = "";
+
+  let quotaBuckets: QuotaBucketDTO[] = [];
+  let quotaLoading = true;
+  let quotaError = "";
+  let quotaBusy = "";
+  let overrideInputs: Record<string, string> = {};
 
   async function load() {
     loading = true;
@@ -25,8 +31,71 @@
     }
   }
 
-  onMount(load);
-  $: userId, load();
+  async function loadQuota() {
+    quotaLoading = true;
+    quotaError = "";
+    try {
+      const res = await api.adminGetUserQuota(userId);
+      quotaBuckets = res.buckets;
+      overrideInputs = Object.fromEntries(res.buckets.map((b) => [b.bucket, String(b.limit)]));
+    } catch (e) {
+      quotaError = e instanceof ApiError ? e.message : "Failed to load quota.";
+    } finally {
+      quotaLoading = false;
+    }
+  }
+
+  async function resetQuota(bucket: QuotaBucket) {
+    quotaBusy = bucket;
+    quotaError = "";
+    try {
+      await api.adminResetQuota(userId, bucket);
+      await loadQuota();
+    } catch (e) {
+      quotaError = e instanceof ApiError ? e.message : "Failed to reset quota.";
+    } finally {
+      quotaBusy = "";
+    }
+  }
+
+  async function saveOverride(bucket: QuotaBucket) {
+    const raw = overrideInputs[bucket]?.trim();
+    const dailyLimit = raw === "" || raw === undefined ? NaN : Number(raw);
+    if (!Number.isInteger(dailyLimit) || dailyLimit < 0) {
+      quotaError = "Enter a non-negative whole number.";
+      return;
+    }
+
+    quotaBusy = bucket;
+    quotaError = "";
+    try {
+      await api.adminSetQuotaOverride(userId, bucket, dailyLimit);
+      await loadQuota();
+    } catch (e) {
+      quotaError = e instanceof ApiError ? e.message : "Failed to update quota.";
+    } finally {
+      quotaBusy = "";
+    }
+  }
+
+  async function clearOverride(bucket: QuotaBucket) {
+    quotaBusy = bucket;
+    quotaError = "";
+    try {
+      await api.adminSetQuotaOverride(userId, bucket, null);
+      await loadQuota();
+    } catch (e) {
+      quotaError = e instanceof ApiError ? e.message : "Failed to update quota.";
+    } finally {
+      quotaBusy = "";
+    }
+  }
+
+  onMount(() => {
+    load();
+    loadQuota();
+  });
+  $: userId, load(), loadQuota();
 </script>
 
 <button class="back" on:click={() => navigate("/admin")}>&larr; All users</button>
@@ -37,6 +106,55 @@
 </div>
 
 {#if error}<p class="error">{error}</p>{/if}
+
+<div class="quota card-surface">
+  <h2>Daily AI quotas</h2>
+  {#if quotaError}<p class="error">{quotaError}</p>{/if}
+  {#if quotaLoading}
+    <p class="muted">Loading…</p>
+  {:else}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Bucket</th>
+            <th>Used today</th>
+            <th>Limit</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each quotaBuckets as b (b.bucket)}
+            <tr>
+              <td>
+                {b.label}
+                {#if b.overridden}<span class="pill overridden">custom</span>{/if}
+              </td>
+              <td class="muted">{b.used} / {b.limit}{#if b.overridden} <span class="muted small">(default {b.defaultLimit})</span>{/if}</td>
+              <td>
+                <input
+                  class="limit-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  bind:value={overrideInputs[b.bucket]}
+                  disabled={quotaBusy === b.bucket}
+                />
+              </td>
+              <td class="actions">
+                <button class="btn" disabled={quotaBusy === b.bucket} on:click={() => saveOverride(b.bucket)}>Save limit</button>
+                {#if b.overridden}
+                  <button class="btn" disabled={quotaBusy === b.bucket} on:click={() => clearOverride(b.bucket)}>Use default</button>
+                {/if}
+                <button class="btn btn-danger" disabled={quotaBusy === b.bucket} on:click={() => resetQuota(b.bucket)}>Reset usage</button>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {/if}
+</div>
 
 {#if loading}
   <p class="muted">Loading…</p>
@@ -62,6 +180,17 @@
   .back:hover { color: var(--text); }
   .header { margin-bottom: 1rem; }
   .error { color: var(--bad); margin-bottom: 1rem; }
+  .quota { padding: 1.1rem; margin-bottom: 1.5rem; }
+  .quota h2 { margin: 0 0 0.75rem; font-size: 1.05rem; }
+  .table-wrap { overflow-x: auto; }
+  .quota table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  .quota th, .quota td { text-align: left; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .quota th { color: var(--text-dim); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
+  .quota tr:last-child td { border-bottom: none; }
+  .quota .actions { display: flex; gap: 0.4rem; }
+  .limit-input { width: 5.5rem; }
+  .small { font-size: 0.8rem; }
+  .pill.overridden { background: rgba(110, 168, 254, 0.18); color: var(--accent); margin-left: 0.4rem; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 600; }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

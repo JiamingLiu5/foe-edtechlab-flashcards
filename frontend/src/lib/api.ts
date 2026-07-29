@@ -1,10 +1,12 @@
 import type {
   AdminUserDTO,
+  AdminUserQuotaDTO,
   AiDraftDTO,
   CardDTO,
   DeckSummaryDTO,
   DueCardDTO,
   GenerationJobDTO,
+  QuotaBucket,
   ReviewOutcome,
   ReviewResultDTO,
   SelfCheckGradeDTO,
@@ -56,6 +58,14 @@ export const api = {
     request<{ deck: { id: string; name: string; ownerId: string; createdAt: string }; cards: CardDTO[] }>(
       `/admin/decks/${deckId}/cards`
     ),
+  adminGetUserQuota: (id: string) => request<AdminUserQuotaDTO>(`/admin/users/${id}/quota`),
+  adminResetQuota: (id: string, bucket: QuotaBucket) =>
+    request<{ ok: true }>(`/admin/users/${id}/quota/${bucket}/reset`, { method: "POST" }),
+  adminSetQuotaOverride: (id: string, bucket: QuotaBucket, dailyLimit: number | null) =>
+    request<{ ok: true }>(`/admin/users/${id}/quota/${bucket}`, {
+      method: "PUT",
+      body: JSON.stringify({ dailyLimit }),
+    }),
 
   listDecks: () => request<{ decks: DeckSummaryDTO[] }>("/decks"),
   createDeck: (name: string) => request<{ deck: DeckSummaryDTO }>("/decks", { method: "POST", body: JSON.stringify({ name }) }),

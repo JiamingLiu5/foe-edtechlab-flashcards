@@ -5,12 +5,27 @@ import { prisma } from "../db.js";
 import { generateCardsFromText, reviewCards } from "../lib/claude.js";
 import { extractPdfText } from "../lib/gemini.js";
 import { isRetryableAiError } from "../lib/retry.js";
+import { releaseDailyQuota } from "../lib/quota.js";
 import { extractUrlText } from "../lib/urlExtract.js";
 import type { GenerationJobPayload } from "../lib/queue.js";
 
 const REVIEW_BATCH_SIZE = 20;
 
-async function processImportJob(job: { id: string; deckId: string; sourceFilename: string; sourceType: string; sourceUrl: string | null; uploadPath: string | null }) {
+/** Maps a job kind back onto the quota bucket that was reserved for it when the job was created. */
+function quotaBucketForJob(kind: string): string {
+  return kind === "review" ? "deck_review" : "generation";
+}
+
+async function processImportJob(job: {
+  id: string;
+  deckId: string;
+  kind: string;
+  requestedById: string;
+  sourceFilename: string;
+  sourceType: string;
+  sourceUrl: string | null;
+  uploadPath: string | null;
+}) {
   await prisma.generationJob.update({ where: { id: job.id }, data: { status: "extracting" } });
 
   const sourceText =
@@ -41,6 +56,7 @@ async function processImportJob(job: { id: string; deckId: string; sourceFilenam
       where: { id: job.id },
       data: { status: "failed", error: "No groundable cards could be drawn from this source." },
     });
+    await releaseDailyQuota(job.requestedById, quotaBucketForJob(job.kind));
     return;
   }
 
@@ -112,10 +128,11 @@ async function processJob(bullJob: Job<GenerationJobPayload>) {
     console.error(`[generation-worker] job ${jobId} failed permanently:`, err);
     // The owner may have deleted their account while this job was processing.
     // updateMany makes that race a clean no-op instead of causing needless retries.
-    await prisma.generationJob.updateMany({
+    const { count } = await prisma.generationJob.updateMany({
       where: { id: jobId },
       data: { status: "failed", error: err instanceof Error ? err.message : "Unknown error" },
     });
+    if (count > 0) await releaseDailyQuota(job.requestedById, quotaBucketForJob(job.kind));
     throw new UnrecoverableError(err instanceof Error ? err.message : "Unknown error");
   }
 }
@@ -139,10 +156,14 @@ export function startGenerationWorker() {
     }
 
     console.error(`[generation-worker] bullmq job ${bullJob.id} exhausted its retries:`, err);
-    await prisma.generationJob.updateMany({
-      where: { id: bullJob.data.jobId },
+    const job = await prisma.generationJob.findUnique({ where: { id: bullJob.data.jobId } });
+    if (!job || job.status === "failed") return;
+
+    await prisma.generationJob.update({
+      where: { id: job.id },
       data: { status: "failed", error: err instanceof Error ? err.message : "Unknown error" },
     });
+    await releaseDailyQuota(job.requestedById, quotaBucketForJob(job.kind));
   });
 
   console.log("[generation-worker] started, waiting for jobs");

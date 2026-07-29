@@ -29,11 +29,26 @@ model User {
   status       UserStatus @default(approved)
   createdAt    DateTime   @default(now())
 
-  decks       Deck[]
-  reviews     Review[]
-  jobsCreated GenerationJob[]
+  decks          Deck[]
+  reviews        Review[]
+  jobsCreated    GenerationJob[]
+  quotaOverrides QuotaOverride[]
 
   @@map("users")
+}
+
+/// Per-user override of a daily AI-usage quota bucket ("generation" | "grading" | "deck_review"),
+/// set by an admin to replace the global env-configured default for that user.
+model QuotaOverride {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bucket     String
+  dailyLimit Int
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, bucket])
+  @@map("quota_overrides")
 }
 
 model Deck {

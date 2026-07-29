@@ -2,14 +2,18 @@ import dns from "node:dns/promises";
 import { env } from "../env.js";
 
 const FETCH_TIMEOUT_MS = 15_000;
+const MAX_REDIRECTS = 5;
 
 /** Blocks SSRF against loopback/private/link-local ranges — a server-side URL fetch is an easy target otherwise. */
-function isPrivateIp(ip: string): boolean {
-  if (ip.includes(":")) {
-    const lower = ip.toLowerCase();
+function isPrivateIp(rawIp: string): boolean {
+  if (rawIp.includes(":")) {
+    const lower = rawIp.toLowerCase();
+    // Unwrap IPv4-mapped IPv6 addresses (e.g. "::ffff:127.0.0.1") so the IPv4 checks below still apply.
+    const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped) return isPrivateIp(mapped[1]);
     return lower === "::1" || lower.startsWith("fc") || lower.startsWith("fd") || lower.startsWith("fe80");
   }
-  const parts = ip.split(".").map(Number);
+  const parts = rawIp.split(".").map(Number);
   if (parts.length !== 4 || parts.some((p) => Number.isNaN(p))) return true;
   const [a, b] = parts;
   return (
@@ -28,6 +32,13 @@ async function assertPublicHost(hostname: string): Promise<void> {
   if (records.some((r) => isPrivateIp(r.address))) {
     throw new Error("This URL points to a private or internal address, which isn't allowed.");
   }
+}
+
+async function assertPublicUrl(url: URL): Promise<void> {
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Only http:// and https:// URLs are supported.");
+  }
+  await assertPublicHost(url.hostname);
 }
 
 function stripHtmlToText(html: string): string {
@@ -59,6 +70,36 @@ function stripHtmlToText(html: string): string {
 }
 
 /**
+ * Follows redirects one hop at a time, re-validating that each target host is
+ * still public — "redirect: follow" would otherwise let a hostile server
+ * redirect the request past the SSRF check straight at an internal address.
+ */
+async function fetchPublicUrl(url: URL, signal: AbortSignal): Promise<{ res: Response; finalUrl: URL }> {
+  let current = url;
+  for (let hop = 0; ; hop++) {
+    if (hop > 0) await assertPublicUrl(current);
+
+    let res: Response;
+    try {
+      res = await fetch(current, {
+        signal,
+        redirect: "manual",
+        headers: { "User-Agent": "FlashcardsBot/1.0 (+educational card generation)" },
+      });
+    } catch (err) {
+      throw new Error(err instanceof Error && err.name === "AbortError" ? "Fetching that URL timed out." : "Could not fetch that URL.");
+    }
+
+    const isRedirect = res.status >= 300 && res.status < 400;
+    const location = res.headers.get("location");
+    if (!isRedirect || !location) return { res, finalUrl: current };
+
+    if (hop >= MAX_REDIRECTS) throw new Error("That URL redirected too many times.");
+    current = new URL(location, current);
+  }
+}
+
+/**
  * Fetches a public webpage server-side and reduces it to plain text with
  * "=== Section: ... ===" markers derived from its headings, so the same
  * citation-grounded generation prompt used for PDFs also works for URLs.
@@ -70,23 +111,13 @@ export async function extractUrlText(rawUrl: string): Promise<{ text: string; ti
   } catch {
     throw new Error("That doesn't look like a valid URL.");
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Only http:// and https:// URLs are supported.");
-  }
-
-  await assertPublicHost(url.hostname);
+  await assertPublicUrl(url);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetch(url, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: { "User-Agent": "FlashcardsBot/1.0 (+educational card generation)" },
-    });
-  } catch (err) {
-    throw new Error(err instanceof Error && err.name === "AbortError" ? "Fetching that URL timed out." : "Could not fetch that URL.");
+    ({ res, finalUrl: url } = await fetchPublicUrl(url, controller.signal));
   } finally {
     clearTimeout(timeout);
   }

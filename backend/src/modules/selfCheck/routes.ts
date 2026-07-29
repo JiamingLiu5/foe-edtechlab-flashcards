@@ -23,11 +23,11 @@ export async function selfCheckRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: "not_found", message: "Card not found." });
     }
 
-    const allowed = await consumeDailyQuota(user.userId, "grading", env.dailyGradingQuota);
-    if (!allowed) {
+    const quota = await consumeDailyQuota(user.userId, "grading", env.dailyGradingQuota);
+    if (!quota.allowed) {
       return reply.code(429).send({
         error: "quota_exceeded",
-        message: `Daily self-check grading limit (${env.dailyGradingQuota}) reached. Try again tomorrow.`,
+        message: `Daily self-check grading limit (${quota.limit}) reached. Try again tomorrow.`,
       });
     }
 

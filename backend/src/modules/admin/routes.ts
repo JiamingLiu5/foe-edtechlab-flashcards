@@ -1,9 +1,17 @@
 import fs from "node:fs/promises";
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../db.js";
+import { env } from "../../env.js";
 import { requireAdmin } from "../auth/plugin.js";
 import { listDeckSummariesForOwner } from "../decks/routes.js";
-import type { AdminUserDTO } from "@flashcards/shared";
+import { getDailyQuotaUsage, getQuotaOverridesForUser, resetDailyQuota, setQuotaOverride } from "../../lib/quota.js";
+import type { AdminUserDTO, AdminUserQuotaDTO, QuotaBucket, QuotaBucketDTO } from "@flashcards/shared";
+
+const QUOTA_BUCKETS: { bucket: QuotaBucket; label: string; defaultLimit: number }[] = [
+  { bucket: "generation", label: "PDF / URL generation", defaultLimit: env.dailyGenerationQuota },
+  { bucket: "grading", label: "Self-check grading", defaultLimit: env.dailyGradingQuota },
+  { bucket: "deck_review", label: "AI deck review", defaultLimit: env.dailyDeckReviewQuota },
+];
 
 function toAdminUserDTO(user: {
   id: string;
@@ -164,4 +172,63 @@ export async function adminRoutes(app: FastifyInstance) {
       cards,
     });
   });
+
+  app.get<{ Params: { id: string } }>("/api/admin/users/:id/quota", async (req, reply) => {
+    const admin = requireAdmin(req, reply);
+    if (!admin) return;
+
+    const targetUser = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!targetUser) return reply.code(404).send({ error: "not_found", message: "User not found." });
+
+    const overrides = await getQuotaOverridesForUser(targetUser.id);
+    const buckets: QuotaBucketDTO[] = await Promise.all(
+      QUOTA_BUCKETS.map(async ({ bucket, label, defaultLimit }) => {
+        const override = overrides.get(bucket);
+        const used = await getDailyQuotaUsage(targetUser.id, bucket);
+        return { bucket, label, used, limit: override ?? defaultLimit, defaultLimit, overridden: override !== undefined };
+      })
+    );
+
+    const quota: AdminUserQuotaDTO = { buckets };
+    return reply.send(quota);
+  });
+
+  app.post<{ Params: { id: string; bucket: string } }>(
+    "/api/admin/users/:id/quota/:bucket/reset",
+    async (req, reply) => {
+      const admin = requireAdmin(req, reply);
+      if (!admin) return;
+
+      const config = QUOTA_BUCKETS.find((b) => b.bucket === req.params.bucket);
+      if (!config) return reply.code(400).send({ error: "invalid_bucket", message: "Unknown quota bucket." });
+
+      const targetUser = await prisma.user.findUnique({ where: { id: req.params.id } });
+      if (!targetUser) return reply.code(404).send({ error: "not_found", message: "User not found." });
+
+      await resetDailyQuota(targetUser.id, config.bucket);
+      return reply.send({ ok: true });
+    }
+  );
+
+  app.put<{ Params: { id: string; bucket: string }; Body: { dailyLimit: number | null } }>(
+    "/api/admin/users/:id/quota/:bucket",
+    async (req, reply) => {
+      const admin = requireAdmin(req, reply);
+      if (!admin) return;
+
+      const config = QUOTA_BUCKETS.find((b) => b.bucket === req.params.bucket);
+      if (!config) return reply.code(400).send({ error: "invalid_bucket", message: "Unknown quota bucket." });
+
+      const dailyLimit = req.body?.dailyLimit ?? null;
+      if (dailyLimit !== null && (!Number.isInteger(dailyLimit) || dailyLimit < 0)) {
+        return reply.code(400).send({ error: "invalid_limit", message: "dailyLimit must be a non-negative integer, or null to clear the override." });
+      }
+
+      const targetUser = await prisma.user.findUnique({ where: { id: req.params.id } });
+      if (!targetUser) return reply.code(404).send({ error: "not_found", message: "User not found." });
+
+      await setQuotaOverride(targetUser.id, config.bucket, dailyLimit);
+      return reply.send({ ok: true });
+    }
+  );
 }

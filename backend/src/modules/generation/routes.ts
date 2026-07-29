@@ -52,11 +52,11 @@ export async function generationRoutes(app: FastifyInstance) {
     const deck = await prisma.deck.findFirst({ where: { id: req.params.id, ownerId: user.userId } });
     if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
 
-    const allowed = await consumeDailyQuota(user.userId, "generation", env.dailyGenerationQuota);
-    if (!allowed) {
+    const quota = await consumeDailyQuota(user.userId, "generation", env.dailyGenerationQuota);
+    if (!quota.allowed) {
       return reply.code(429).send({
         error: "quota_exceeded",
-        message: `Daily PDF-generation limit (${env.dailyGenerationQuota}) reached. Try again tomorrow.`,
+        message: `Daily PDF-generation limit (${quota.limit}) reached. Try again tomorrow.`,
       });
     }
 
@@ -110,11 +110,11 @@ export async function generationRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "invalid_url", message: "Enter a valid http(s) URL." });
     }
 
-    const allowed = await consumeDailyQuota(user.userId, "generation", env.dailyGenerationQuota);
-    if (!allowed) {
+    const quota = await consumeDailyQuota(user.userId, "generation", env.dailyGenerationQuota);
+    if (!quota.allowed) {
       return reply.code(429).send({
         error: "quota_exceeded",
-        message: `Daily generation limit (${env.dailyGenerationQuota}) reached. Try again tomorrow.`,
+        message: `Daily generation limit (${quota.limit}) reached. Try again tomorrow.`,
       });
     }
 
@@ -147,11 +147,11 @@ export async function generationRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "empty_deck", message: "This deck has no cards to review yet." });
     }
 
-    const allowed = await consumeDailyQuota(user.userId, "deck_review", env.dailyDeckReviewQuota);
-    if (!allowed) {
+    const quota = await consumeDailyQuota(user.userId, "deck_review", env.dailyDeckReviewQuota);
+    if (!quota.allowed) {
       return reply.code(429).send({
         error: "quota_exceeded",
-        message: `Daily AI-review limit (${env.dailyDeckReviewQuota}) reached. Try again tomorrow.`,
+        message: `Daily AI-review limit (${quota.limit}) reached. Try again tomorrow.`,
       });
     }
 
