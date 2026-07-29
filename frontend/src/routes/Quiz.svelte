@@ -105,8 +105,16 @@
     return index >= totalQuestions();
   }
 
-  function currentMixedIsMcq() {
-    return mixedQuestions[index]?.kind === "mcq";
+  function currentMcqQuestion(): Question | MixedQuestion | null {
+    if (mode === "mcq") return questions[index] ?? null;
+    const question = mixedQuestions[index];
+    return question?.kind === "mcq" ? question : null;
+  }
+
+  function currentFillQuestion(): FillQuestion | MixedQuestion | null {
+    if (mode === "fill") return fillQuestions[index] ?? null;
+    const question = mixedQuestions[index];
+    return question?.kind === "fill" ? question : null;
   }
 
 </script>
@@ -159,8 +167,8 @@
       {#if fillAnswered}<p>Average AI score: {Math.round(fillScore / fillAnswered)}%</p>{/if}
       <button class="btn btn-primary" on:click={load}>Play again</button>
     </div>
-  {:else if mode === "mcq" || currentMixedIsMcq()}
-    {@const q = mode === "mcq" ? questions[index] : mixedQuestions[index]}
+  {:else if currentMcqQuestion()}
+    {@const q = currentMcqQuestion()}
     <p class="muted small">Question {index + 1} of {totalQuestions()}</p>
     <div class="card-surface question">
       <div class="front"><Katex text={q.front} /></div>
@@ -181,8 +189,8 @@
         <button class="btn btn-primary next" on:click={next}>Next</button>
       {/if}
     </div>
-  {:else}
-    {@const q = mode === "fill" ? fillQuestions[index] : mixedQuestions[index]}
+  {:else if currentFillQuestion()}
+    {@const q = currentFillQuestion()}
     <p class="muted small">Question {index + 1} of {totalQuestions()}</p>
     <form class="card-surface question" on:submit|preventDefault={checkFillAnswer}>
       <div class="front"><Katex text={q.front} /></div>
@@ -205,6 +213,8 @@
         </button>
       {/if}
     </form>
+  {:else}
+    <p class="muted">Finishing quiz…</p>
   {/if}
 {/if}
 

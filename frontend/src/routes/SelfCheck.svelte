@@ -74,7 +74,10 @@
 
     {#if !result}
       <textarea rows="4" placeholder="Type your answer…" bind:value={answer}></textarea>
-      <button class="btn btn-primary" on:click={submit} disabled={grading}>{grading ? "Grading…" : "Submit"}</button>
+      <div class="actions">
+        <button class="btn btn-primary" on:click={submit} disabled={grading || !answer.trim()}>{grading ? "Grading…" : "Submit"}</button>
+        <button class="btn" on:click={next} disabled={grading}>Skip card</button>
+      </div>
       {#if error}<p class="error">{error}</p>{/if}
     {:else}
       <div class="your-answer muted">Your answer: {answer}</div>
@@ -100,6 +103,7 @@
   .question { padding: 1.5rem; }
   .front { font-weight: 600; font-size: 1.1rem; margin-bottom: 1.1rem; }
   textarea { width: 100%; margin-bottom: 0.75rem; }
+  .actions { display: flex; gap: 0.6rem; }
   .score { font-size: 1.5rem; font-weight: 700; margin: 0.75rem 0; }
   .score.good { color: var(--good); }
   .score.bad { color: var(--bad); }
