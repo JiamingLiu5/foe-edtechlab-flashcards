@@ -1,9 +1,10 @@
 import fs from "node:fs/promises";
-import { Worker, type Job } from "bullmq";
+import { UnrecoverableError, Worker, type Job } from "bullmq";
 import { redis } from "../redis.js";
 import { prisma } from "../db.js";
 import { generateCardsFromText, reviewCards } from "../lib/claude.js";
 import { extractPdfText } from "../lib/gemini.js";
+import { isRetryableAiError } from "../lib/retry.js";
 import { extractUrlText } from "../lib/urlExtract.js";
 import type { GenerationJobPayload } from "../lib/queue.js";
 
@@ -101,13 +102,21 @@ async function processJob(bullJob: Job<GenerationJobPayload>) {
       await processImportJob(job);
     }
   } catch (err) {
-    console.error(`[generation-worker] job ${jobId} failed:`, err);
+    if (isRetryableAiError(err)) {
+      // Do not swallow this error: BullMQ must see it to apply the queue
+      // backoff/retry policy for outages such as Gemini HTTP 503.
+      console.warn(`[generation-worker] job ${jobId} failed transiently; BullMQ will retry it.`, err);
+      throw err;
+    }
+
+    console.error(`[generation-worker] job ${jobId} failed permanently:`, err);
     // The owner may have deleted their account while this job was processing.
     // updateMany makes that race a clean no-op instead of causing needless retries.
     await prisma.generationJob.updateMany({
       where: { id: jobId },
       data: { status: "failed", error: err instanceof Error ? err.message : "Unknown error" },
     });
+    throw new UnrecoverableError(err instanceof Error ? err.message : "Unknown error");
   }
 }
 
@@ -118,8 +127,22 @@ export function startGenerationWorker() {
     { connection: redis, concurrency: 2 }
   );
 
-  worker.on("failed", (job, err) => {
-    console.error(`[generation-worker] bullmq job ${job?.id} errored:`, err);
+  worker.on("failed", async (bullJob, err) => {
+    if (!bullJob) return;
+
+    const maxAttempts = bullJob.opts.attempts ?? 1;
+    if (bullJob.attemptsMade < maxAttempts) {
+      console.warn(
+        `[generation-worker] bullmq job ${bullJob.id} attempt ${bullJob.attemptsMade}/${maxAttempts} failed; retry scheduled.`
+      );
+      return;
+    }
+
+    console.error(`[generation-worker] bullmq job ${bullJob.id} exhausted its retries:`, err);
+    await prisma.generationJob.updateMany({
+      where: { id: bullJob.data.jobId },
+      data: { status: "failed", error: err instanceof Error ? err.message : "Unknown error" },
+    });
   });
 
   console.log("[generation-worker] started, waiting for jobs");

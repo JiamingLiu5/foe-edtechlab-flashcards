@@ -8,7 +8,7 @@
   import Login from "./routes/Login.svelte";
   import DeckLibrary from "./routes/DeckLibrary.svelte";
   import DeckDetail from "./routes/DeckDetail.svelte";
-  import PdfImport from "./routes/PdfImport.svelte";
+  import AddCards from "./routes/PdfImport.svelte";
   import AiReview from "./routes/AiReview.svelte";
   import Study from "./routes/Study.svelte";
   import Quiz from "./routes/Quiz.svelte";
@@ -25,10 +25,12 @@
   $: isAdmin = $currentUser?.role === "admin";
 
   $: deckIdParams = matchRoute("/decks/:id", path);
+  $: addCardsParams = matchRoute("/decks/:id/add-cards", path);
   $: importParams = matchRoute("/decks/:id/import", path);
   $: reviewParams = matchRoute("/decks/:id/jobs/:jobId/review", path);
   $: studyParams = matchRoute("/decks/:id/study", path);
   $: quizParams = matchRoute("/decks/:id/quiz", path);
+  $: quizModeParams = matchRoute("/decks/:id/quiz/:mode", path);
   $: selfCheckParams = matchRoute("/decks/:id/selfcheck", path);
   $: adminUserDeckParams = matchRoute("/admin/users/:id/decks/:deckId", path);
   $: adminUserDecksParams = matchRoute("/admin/users/:id/decks", path);
@@ -66,14 +68,16 @@
         <AdminUserDecks userId={adminUserDecksParams.id} />
       {:else if selfCheckParams}
         <SelfCheck deckId={selfCheckParams.id} />
+      {:else if quizModeParams && (quizModeParams.mode === "mcq" || quizModeParams.mode === "fill")}
+        <Quiz deckId={quizModeParams.id} mode={quizModeParams.mode} />
       {:else if quizParams}
         <Quiz deckId={quizParams.id} />
       {:else if studyParams}
         <Study deckId={studyParams.id} />
       {:else if reviewParams}
         <AiReview deckId={reviewParams.id} jobId={reviewParams.jobId} />
-      {:else if importParams}
-        <PdfImport deckId={importParams.id} />
+      {:else if addCardsParams || importParams}
+        <AddCards deckId={(addCardsParams ?? importParams)!.id} />
       {:else if deckIdParams}
         <DeckDetail deckId={deckIdParams.id} />
       {:else}

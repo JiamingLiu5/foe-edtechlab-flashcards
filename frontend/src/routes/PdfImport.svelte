@@ -4,12 +4,66 @@
 
   export let deckId: string;
 
-  let mode: "pdf" | "url" = "pdf";
+  let mode: "manual" | "bulk" | "pdf" | "url" = "manual";
   let dragOver = false;
   let uploading = false;
+  let saving = false;
   let error = "";
   let fileInput: HTMLInputElement;
   let url = "";
+  let front = "";
+  let back = "";
+  let tags = "";
+  let bulkText = "";
+
+  function selectMode(nextMode: typeof mode) {
+    mode = nextMode;
+    error = "";
+  }
+
+  async function addCard() {
+    if (!front.trim() || !back.trim()) return;
+    saving = true;
+    error = "";
+    try {
+      await api.createCard(deckId, front.trim(), back.trim(), tags.split(",").map((tag) => tag.trim()).filter(Boolean));
+      front = "";
+      back = "";
+      tags = "";
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : "Couldn't add this card.";
+    } finally {
+      saving = false;
+    }
+  }
+
+  async function addBulk() {
+    const cards = bulkText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [front, ...backParts] = line.split(/\t| \| /);
+        return { front: front?.trim() ?? "", back: backParts.join(" | ").trim() };
+      })
+      .filter((card) => card.front && card.back);
+
+    if (!cards.length) {
+      error = "Add at least one line with a front and back separated by a tab or |.";
+      return;
+    }
+
+    saving = true;
+    error = "";
+    try {
+      await api.createCardsBulk(deckId, cards);
+      bulkText = "";
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : "Couldn't add these cards.";
+    } finally {
+      saving = false;
+    }
+  }
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -52,14 +106,34 @@
 
 <button class="back" on:click={() => navigate(`/decks/${deckId}`)}>&larr; Back to deck</button>
 
-<h1>Import cards</h1>
+<h1>Add cards</h1>
+<p class="muted">Create cards yourself, paste several at once, or ask AI to draft cards from a PDF or public webpage.</p>
 
 <div class="tabs">
-  <button class="tab" class:active={mode === "pdf"} on:click={() => { mode = "pdf"; error = ""; }}>From PDF</button>
-  <button class="tab" class:active={mode === "url"} on:click={() => { mode = "url"; error = ""; }}>From URL</button>
+  <button class="tab" class:active={mode === "manual"} on:click={() => selectMode("manual")}>Create a card</button>
+  <button class="tab" class:active={mode === "bulk"} on:click={() => selectMode("bulk")}>Paste cards</button>
+  <button class="tab" class:active={mode === "pdf"} on:click={() => selectMode("pdf")}>From PDF</button>
+  <button class="tab" class:active={mode === "url"} on:click={() => selectMode("url")}>From link</button>
 </div>
 
-{#if mode === "pdf"}
+{#if mode === "manual"}
+  <form class="manual-form card-surface" on:submit|preventDefault={addCard}>
+    <textarea rows="3" placeholder="Front (LaTeX supported)" bind:value={front} disabled={saving}></textarea>
+    <textarea rows="3" placeholder="Back (LaTeX supported)" bind:value={back} disabled={saving}></textarea>
+    <input placeholder="Tags, comma separated (optional)" bind:value={tags} disabled={saving} />
+    <button class="btn btn-primary" type="submit" disabled={saving || !front.trim() || !back.trim()}>
+      {saving ? "Adding…" : "Add card"}
+    </button>
+  </form>
+{:else if mode === "bulk"}
+  <form class="manual-form card-surface" on:submit|preventDefault={addBulk}>
+    <p class="muted small">One card per line: <code>front &lt;tab&gt; back</code> or <code>front | back</code></p>
+    <textarea rows="9" placeholder={"What is the capital of France?\tParis"} bind:value={bulkText} disabled={saving}></textarea>
+    <button class="btn btn-primary" type="submit" disabled={saving || !bulkText.trim()}>
+      {saving ? "Adding…" : "Add all cards"}
+    </button>
+  </form>
+{:else if mode === "pdf"}
   <p class="muted">Upload lecture slides — we transcribe them and draft cards grounded in the source text, each citing the slide it came from. You'll review every card before it's added.</p>
 
   <div
@@ -95,7 +169,7 @@
   <form class="url-form card-surface" on:submit|preventDefault={submitUrl}>
     <input type="url" placeholder="https://example.com/lecture-notes" bind:value={url} disabled={uploading} required />
     <button class="btn btn-primary" type="submit" disabled={uploading || !url.trim()}>
-      {uploading ? "Importing…" : "Import"}
+      {uploading ? "Importing…" : "Draft cards"}
     </button>
   </form>
 {/if}
@@ -125,6 +199,9 @@
   .dropzone.drag { border-color: var(--accent); background: var(--surface-2); }
   .url-form { display: flex; gap: 0.6rem; padding: 1rem; margin-top: 1.5rem; }
   .url-form input { flex: 1; }
+  .manual-form { display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; }
+  .manual-form textarea { width: 100%; }
+  .manual-form .btn { align-self: flex-start; }
   .small { font-size: 0.8rem; }
   .error { color: var(--bad); margin-top: 1rem; }
 </style>

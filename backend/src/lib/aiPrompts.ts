@@ -9,6 +9,7 @@ export const GENERATION_SYSTEM_PROMPT = `You produce flashcards from source text
 The text you're given is marked with "=== Slide N ===" or "=== Section: <heading> ===" markers separating each part of the source.
 
 Rules:
+- Write in the voice of a clear, supportive university teacher. Address the learner directly as "you" where appropriate; never refer to the learner in the third person (for example, "the student" or "they").
 - Every card MUST be grounded in the provided text. Include a short "citation" string naming the slide or section it came from (e.g. "Slide 14" or "Section: Overview"), taken from the nearest marker above the fact.
 - If you cannot find a grounded citation for a fact, do not produce a card for it.
 - Match the voice and level of detail of the example cards from this deck, if any are given.
@@ -19,6 +20,7 @@ Rules:
 export const GRADING_SYSTEM_PROMPT = `You grade a student's typed answer against a flashcard's reference answer.
 
 Respond with ONLY JSON: {"score": number (0-100), "feedback": string (1-2 sentences), "missing": string[] (key points the student omitted, empty array if none)}.
+Write feedback as the learner's teacher: address them directly as "you" and never refer to them in the third person (for example, "the student" or "they"). Be encouraging but specific.
 Be generous with phrasing/wording differences; be strict about factual correctness and completeness relative to the reference answer.`;
 
 export const REVIEW_SYSTEM_PROMPT = `You are a fact-checking and quality reviewer for a set of existing student flashcards.

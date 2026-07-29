@@ -9,14 +9,10 @@
 
   let cards: CardDTO[] = [];
   let loading = true;
-  let front = "";
-  let back = "";
-  let tags = "";
-  let bulkText = "";
-  let showBulk = false;
-  let saving = false;
   let search = "";
   let tagFilter = "";
+  let cardIndex = 0;
+  let flipped = false;
 
   $: allTags = [...new Set(cards.flatMap((card) => card.tags))].sort();
   $: visibleCards = cards.filter((card) => {
@@ -24,6 +20,11 @@
     return (!query || card.front.toLowerCase().includes(query) || card.back.toLowerCase().includes(query))
       && (!tagFilter || card.tags.includes(tagFilter));
   });
+  $: if (cardIndex >= visibleCards.length) {
+    cardIndex = 0;
+    flipped = false;
+  }
+  $: currentCard = visibleCards[cardIndex] ?? null;
 
   async function load() {
     loading = true;
@@ -32,48 +33,20 @@
     loading = false;
   }
 
-  async function addCard() {
-    if (!front.trim() || !back.trim()) return;
-    saving = true;
-    try {
-      await api.createCard(deckId, front.trim(), back.trim(), tags.split(",").map((tag) => tag.trim()).filter(Boolean));
-      front = "";
-      back = "";
-      tags = "";
-      await load();
-    } finally {
-      saving = false;
-    }
-  }
-
-  async function addBulk() {
-    // One card per line, front and back separated by a tab or " | ".
-    const parsed = bulkText
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [f, ...rest] = line.split(/\t| \| /);
-        return { front: f?.trim() ?? "", back: rest.join(" | ").trim() };
-      })
-      .filter((c) => c.front && c.back);
-
-    if (!parsed.length) return;
-    saving = true;
-    try {
-      await api.createCardsBulk(deckId, parsed);
-      bulkText = "";
-      showBulk = false;
-      await load();
-    } finally {
-      saving = false;
-    }
-  }
-
   async function removeCard(cardId: string) {
     if (!confirm("Delete this card?")) return;
     await api.deleteCard(deckId, cardId);
     await load();
+  }
+
+  function moveCard(direction: -1 | 1) {
+    if (visibleCards.length < 2) return;
+    cardIndex = (cardIndex + direction + visibleCards.length) % visibleCards.length;
+    flipped = false;
+  }
+
+  function toggleCard() {
+    if (currentCard) flipped = !flipped;
   }
 
   let reviewing = false;
@@ -98,7 +71,7 @@
 <button class="back" on:click={() => navigate("/decks")}>&larr; All decks</button>
 
 <div class="actions">
-  <button class="btn" on:click={() => navigate(`/decks/${deckId}/import`)}>Import cards</button>
+  <button class="btn btn-primary" on:click={() => navigate(`/decks/${deckId}/add-cards`)}>Add cards</button>
   <button class="btn" on:click={startAiReview} disabled={reviewing || cards.length === 0} title="Have AI check this deck's cards for factual or clarity issues">
     {reviewing ? "Starting review…" : "AI review"}
   </button>
@@ -109,32 +82,6 @@
 </div>
 
 {#if reviewError}<p class="error">{reviewError}</p>{/if}
-
-<div class="card-surface add-card">
-  <div class="add-card-header">
-    <h3>Add a card</h3>
-    <button class="btn" on:click={() => (showBulk = !showBulk)}>{showBulk ? "Single card" : "Bulk paste"}</button>
-  </div>
-
-  {#if showBulk}
-    <p class="muted small">One card per line: <code>front &lt;tab&gt; back</code> or <code>front | back</code></p>
-    <textarea rows="6" bind:value={bulkText} placeholder={"What is the capital of France?\tParis"}></textarea>
-    <button class="btn btn-primary" on:click={addBulk} disabled={saving}>Add all</button>
-  {:else}
-    <form on:submit|preventDefault={addCard}>
-      <textarea rows="2" placeholder="Front (LaTeX supported)" bind:value={front}></textarea>
-      <textarea rows="2" placeholder="Back (LaTeX supported)" bind:value={back}></textarea>
-      <input placeholder="Tags, comma separated" bind:value={tags} />
-      <button class="btn btn-primary" type="submit" disabled={saving}>Add card</button>
-    </form>
-    {#if front || back}
-      <div class="preview">
-        <strong>Preview</strong>
-        <Katex text={front || "Front"} /> <span class="muted">→</span> <Katex text={back || "Back"} />
-      </div>
-    {/if}
-  {/if}
-</div>
 
 <div class="filters">
   <input type="search" placeholder="Search questions and answers…" bind:value={search} />
@@ -147,19 +94,42 @@
 {#if loading}
   <p class="muted">Loading…</p>
 {:else if cards.length === 0}
-  <p class="muted">No cards yet.</p>
+  <div class="card-surface empty-state">
+    <p>No cards yet.</p>
+    <button class="btn btn-primary" on:click={() => navigate(`/decks/${deckId}/add-cards`)}>Add cards</button>
+  </div>
+{:else if visibleCards.length === 0}
+  <p class="muted">No cards match this filter.</p>
 {:else}
-  <ul class="card-list">
-    {#each visibleCards as card}
-      <li class="card-surface">
-        <div class="front"><Katex text={card.front} /></div>
-        <div class="back muted"><Katex text={card.back} /></div>
-        {#if card.source && card.source !== "manual"}<div class="source muted small">{card.source}</div>{/if}
-        {#if card.tags.length}<div class="tags">{#each card.tags as tag}<span>{tag}</span>{/each}</div>{/if}
-        <button class="delete" on:click={() => removeCard(card.id)}>Delete</button>
-      </li>
-    {/each}
-  </ul>
+  {@const card = currentCard!}
+  <div class="viewer">
+    <button class="card-arrow" on:click={() => moveCard(-1)} disabled={visibleCards.length < 2} aria-label="Previous card">&larr;</button>
+    <div
+      class="card-surface flashcard"
+      class:flipped
+      on:click={toggleCard}
+      on:keydown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggleCard();
+        }
+      }}
+      role="button"
+      tabindex="0"
+      aria-label={flipped ? "Show the question" : "Show the answer"}
+    >
+      <p class="face-label muted small">{flipped ? "Answer" : "Question"}</p>
+      <div class="face"><Katex text={flipped ? card.back : card.front} /></div>
+      <p class="muted small hint">Click the card to {flipped ? "see the question" : "reveal the answer"}</p>
+    </div>
+    <button class="card-arrow" on:click={() => moveCard(1)} disabled={visibleCards.length < 2} aria-label="Next card">&rarr;</button>
+  </div>
+  <div class="card-meta">
+    <span class="muted small">Card {cardIndex + 1} of {visibleCards.length}</span>
+    {#if card.source && card.source !== "manual"}<span class="source muted small">{card.source}</span>{/if}
+    {#if card.tags.length}<div class="tags">{#each card.tags as tag}<span>{tag}</span>{/each}</div>{/if}
+    <button class="delete" on:click={() => removeCard(card.id)}>Delete card</button>
+  </div>
 {/if}
 
 <style>
@@ -168,25 +138,42 @@
   .actions { display: flex; gap: 0.6rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
   .actions a.btn { text-decoration: none; display: inline-flex; align-items: center; }
   .error { color: var(--bad); margin-bottom: 1rem; }
-  .add-card { padding: 1.1rem; margin-bottom: 1.5rem; }
-  .add-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
-  .add-card h3 { margin: 0; }
-  .add-card form { display: flex; gap: 0.6rem; flex-wrap: wrap; }
-  .add-card input, .add-card form textarea { flex: 1; min-width: 180px; }
-  .add-card textarea { width: 100%; margin-bottom: 0.6rem; font-family: monospace; }
   .small { font-size: 0.8rem; }
-  .preview { width: 100%; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); display: flex; gap: 0.5rem; flex-wrap: wrap; }
   .filters { display: flex; gap: 0.6rem; margin-bottom: 1rem; }
   .filters input { flex: 1; }
   .tags { display: flex; gap: 0.35rem; margin-top: 0.5rem; }
   .tags span { font-size: 0.72rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: var(--surface-2); color: var(--text-dim); }
-  .card-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
-  .card-list li { padding: 0.9rem 1rem; position: relative; }
-  .front { font-weight: 600; margin-bottom: 0.3rem; }
+  .viewer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; }
+  .flashcard {
+    min-height: 280px;
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 160ms ease, border-color 160ms ease;
+  }
+  .flashcard:hover, .flashcard:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
+  .flashcard.flipped { background: var(--surface-2); }
+  .face-label { margin: 0 0 1rem; text-transform: uppercase; letter-spacing: 0.08em; }
+  .face { font-size: 1.15rem; font-weight: 600; }
+  .hint { margin: 1.5rem 0 0; }
+  .card-arrow { border: 1px solid var(--border); background: var(--surface-2); color: var(--text); border-radius: 999px; width: 2.75rem; height: 2.75rem; font-size: 1.25rem; }
+  .card-arrow:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .card-arrow:disabled { cursor: default; opacity: 0.35; }
+  .card-meta { display: flex; align-items: center; justify-content: center; gap: 0.7rem; flex-wrap: wrap; margin-top: 0.75rem; }
   .source { margin-top: 0.4rem; }
   .delete {
-    position: absolute; top: 0.7rem; right: 0.9rem;
     background: none; border: none; color: var(--text-dim); font-size: 0.8rem;
   }
   .delete:hover { color: var(--bad); }
+  .empty-state { padding: 2rem; text-align: center; }
+  @media (max-width: 600px) {
+    .viewer { grid-template-columns: 1fr 1fr; }
+    .flashcard { grid-column: 1 / -1; grid-row: 1; min-height: 240px; }
+    .card-arrow:first-child { grid-column: 1; grid-row: 2; justify-self: end; }
+    .card-arrow:last-child { grid-column: 2; grid-row: 2; justify-self: start; }
+  }
 </style>
