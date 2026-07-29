@@ -29,6 +29,12 @@ model User {
   status       UserStatus @default(approved)
   createdAt    DateTime   @default(now())
 
+  /// Minutes until a card comes back after each Study outcome — student-configurable, applies across all their decks.
+  studyAgainMinutes Int @default(0)
+  studyHardMinutes  Int @default(360)
+  studyGoodMinutes  Int @default(720)
+  studyEasyMinutes  Int @default(1440)
+
   decks          Deck[]
   reviews        Review[]
   jobsCreated    GenerationJob[]
@@ -73,6 +79,8 @@ model Card {
   tags      String[] @default([])
   source    String?
   includeInQuiz Boolean @default(true)
+  /// Set via the Study page's "All done" action — excludes the card from future Study sessions until un-retired.
+  retired   Boolean  @default(false)
   createdAt DateTime @default(now())
 
   reviews      Review[]
@@ -160,17 +168,14 @@ enum ReviewOutcome {
 }
 
 model Review {
-  id           String        @id @default(uuid())
-  userId       String
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  cardId       String
-  card         Card          @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  reviewedAt   DateTime      @default(now())
-  outcome      ReviewOutcome
-  easeFactor   Float
-  intervalDays Int
-  repetitions  Int           @default(0)
-  dueAt        DateTime
+  id         String        @id @default(uuid())
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cardId     String
+  card       Card          @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  reviewedAt DateTime      @default(now())
+  outcome    ReviewOutcome
+  dueAt      DateTime
 
   @@map("reviews")
   @@index([cardId])

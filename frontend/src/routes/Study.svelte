@@ -12,7 +12,16 @@
   let done = false;
   let reviewedCount = 0;
   let nextDueAt: string | null = null;
-  let intervalPreviews: Record<ReviewOutcome, number> = { again: 1, hard: 1, good: 1, easy: 1 };
+  let intervalPreviews: Record<ReviewOutcome, number> = { again: 0, hard: 360, good: 720, easy: 1440 };
+  let retiring = false;
+
+  /** Renders a minutes count (a Study interval) as "now" / "Xh" / "Xd". */
+  function formatMinutes(minutes: number): string {
+    if (minutes <= 0) return "now";
+    if (minutes < 60) return `${minutes}m`;
+    if (minutes < 1440) return `${Math.round((minutes / 60) * 10) / 10}h`;
+    return `${Math.round((minutes / 1440) * 10) / 10}d`;
+  }
 
   async function loadNext() {
     flipped = false;
@@ -30,10 +39,24 @@
     await loadNext();
   }
 
+  async function retire() {
+    if (!card || retiring) return;
+    retiring = true;
+    try {
+      await api.updateCard(deckId, card.id, { retired: true });
+      await loadNext();
+    } finally {
+      retiring = false;
+    }
+  }
+
   onMount(loadNext);
 </script>
 
-<button class="back" on:click={() => navigate(`/decks/${deckId}`)}>&larr; Back to deck</button>
+<div class="topline">
+  <button class="back" on:click={() => navigate(`/decks/${deckId}`)}>&larr; Back to deck</button>
+  <button class="settings-link" on:click={() => navigate("/settings")}>Study settings</button>
+</div>
 <h1>Study</h1>
 
 {#if card === undefined}
@@ -60,17 +83,21 @@
 
   {#if flipped}
     <div class="grade-row">
-      <button class="btn btn-danger" on:click={() => review("again")}>Again <small>{intervalPreviews.again}d</small></button>
-      <button class="btn" on:click={() => review("hard")}>Hard <small>{intervalPreviews.hard}d</small></button>
-      <button class="btn btn-primary" on:click={() => review("good")}>Good <small>{intervalPreviews.good}d</small></button>
-      <button class="btn" on:click={() => review("easy")}>Easy <small>{intervalPreviews.easy}d</small></button>
+      <button class="btn btn-danger" on:click={() => review("again")}>Again <small>{formatMinutes(intervalPreviews.again)}</small></button>
+      <button class="btn" on:click={() => review("hard")}>Hard <small>{formatMinutes(intervalPreviews.hard)}</small></button>
+      <button class="btn btn-primary" on:click={() => review("good")}>Good <small>{formatMinutes(intervalPreviews.good)}</small></button>
+      <button class="btn" on:click={() => review("easy")}>Easy <small>{formatMinutes(intervalPreviews.easy)}</small></button>
+      <button class="btn all-done" disabled={retiring} on:click={retire}>All done <small>never again</small></button>
     </div>
   {/if}
 {/if}
 
 <style>
-  .back { background: none; border: none; color: var(--text-dim); margin-bottom: 1rem; padding: 0; }
+  .topline { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  .back { background: none; border: none; color: var(--text-dim); padding: 0; }
   .back:hover { color: var(--text); }
+  .settings-link { background: none; border: none; color: var(--accent); font-size: 0.85rem; padding: 0; }
+  .settings-link:hover { color: var(--accent-strong); }
   .flashcard {
     padding: 3rem 2rem;
     text-align: center;
@@ -82,9 +109,10 @@
     font-size: 1.15rem;
   }
   .hint { margin-top: 1rem; margin-bottom: 0; }
-  .grade-row { display: flex; gap: 0.6rem; justify-content: center; margin-top: 1.25rem; }
+  .grade-row { display: flex; gap: 0.6rem; justify-content: center; margin-top: 1.25rem; flex-wrap: wrap; }
   .grade-row button { display: flex; flex-direction: column; align-items: center; }
   .grade-row small { opacity: 0.75; }
+  .all-done { border-color: var(--text-dim); }
   .empty { padding: 2rem; text-align: center; }
   .small { font-size: 0.8rem; }
 </style>

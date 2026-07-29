@@ -46,6 +46,11 @@
     await load();
   }
 
+  async function resumeStudying(cardId: string) {
+    await api.updateCard(deckId, cardId, { retired: false });
+    await load();
+  }
+
   function startEdit(card: CardDTO) {
     editFront = card.front;
     editBack = card.back;
@@ -167,8 +172,12 @@
   <div class="card-meta">
     <span class="muted small">Card {cardIndex + 1} of {visibleCards.length}</span>
     {#if card.source && card.source !== "manual"}<span class="source muted small">{card.source}</span>{/if}
+    {#if card.retired}<span class="pill retired">Retired from Study</span>{/if}
     {#if card.tags.length}<div class="tags">{#each card.tags as tag}<span>{tag}</span>{/each}</div>{/if}
     <button class="edit" on:click={() => startEdit(card)}>Edit card</button>
+    {#if card.retired}
+      <button class="edit" on:click={() => resumeStudying(card.id)}>Resume studying</button>
+    {/if}
     <button class="delete" on:click={() => removeCard(card.id)}>Delete card</button>
   </div>
   {#if editing && editingCardId === card.id}
@@ -200,6 +209,7 @@
   .filters input { flex: 1; }
   .tags { display: flex; gap: 0.35rem; margin-top: 0.5rem; }
   .tags span { font-size: 0.72rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: var(--surface-2); color: var(--text-dim); }
+  .pill.retired { font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--surface-2); color: var(--text-dim); font-weight: 600; }
   .viewer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; }
   .flashcard {
     min-height: 280px;

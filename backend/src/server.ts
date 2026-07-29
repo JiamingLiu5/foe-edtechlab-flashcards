@@ -7,6 +7,7 @@ import { authPlugin } from "./modules/auth/plugin.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { bootstrapAdmin } from "./modules/auth/adminBootstrap.js";
 import { adminRoutes } from "./modules/admin/routes.js";
+import { accountRoutes } from "./modules/account/routes.js";
 import { deckRoutes } from "./modules/decks/routes.js";
 import { cardRoutes } from "./modules/cards/routes.js";
 import { generationRoutes } from "./modules/generation/routes.js";
@@ -29,6 +30,7 @@ await bootstrapAdmin();
 
 await app.register(authRoutes);
 await app.register(adminRoutes);
+await app.register(accountRoutes);
 await app.register(deckRoutes);
 await app.register(cardRoutes);
 await app.register(generationRoutes);

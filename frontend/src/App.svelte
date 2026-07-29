@@ -16,6 +16,7 @@
   import AdminUsers from "./routes/AdminUsers.svelte";
   import AdminUserDecks from "./routes/AdminUserDecks.svelte";
   import AdminDeckDetail from "./routes/AdminDeckDetail.svelte";
+  import Settings from "./routes/Settings.svelte";
 
   onMount(refreshSession);
 
@@ -35,6 +36,7 @@
   $: adminUserDeckParams = matchRoute("/admin/users/:id/decks/:deckId", path);
   $: adminUserDecksParams = matchRoute("/admin/users/:id/decks", path);
   $: isAdminRoute = path === "/admin";
+  $: isSettingsRoute = path === "/settings";
   $: isLibrary = path === "/decks" || path === "/" || path === "/login" || path === "";
 
   async function logout() {
@@ -53,6 +55,7 @@
     <header class="topbar">
       <button class="brand" on:click={() => navigate("/decks")}>Flashcards</button>
       <div class="spacer"></div>
+      <button class="btn" on:click={() => navigate("/settings")}>Study settings</button>
       {#if isAdmin}
         <button class="btn" on:click={() => navigate("/admin")}>Admin</button>
       {/if}
@@ -60,7 +63,9 @@
       <button class="btn" on:click={logout}>Sign out</button>
     </header>
     <main>
-      {#if isAdminRoute && isAdmin}
+      {#if isSettingsRoute}
+        <Settings />
+      {:else if isAdminRoute && isAdmin}
         <AdminUsers />
       {:else if adminUserDeckParams && isAdmin}
         <AdminDeckDetail userId={adminUserDeckParams.id} deckId={adminUserDeckParams.deckId} />

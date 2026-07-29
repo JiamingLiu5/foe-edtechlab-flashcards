@@ -1,12 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { PDFDocument } from "pdf-lib";
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../db.js";
 import { env } from "../../env.js";
 import { requireUser } from "../auth/plugin.js";
 import { generationQueue } from "../../lib/queue.js";
-import { consumeDailyQuota } from "../../lib/quota.js";
+import { consumeDailyQuota, getEffectiveQuotaLimit } from "../../lib/quota.js";
 import type { GenerationJobDTO } from "@flashcards/shared";
 
 function toDTO(job: Awaited<ReturnType<typeof loadJob>>): GenerationJobDTO {
@@ -52,14 +53,6 @@ export async function generationRoutes(app: FastifyInstance) {
     const deck = await prisma.deck.findFirst({ where: { id: req.params.id, ownerId: user.userId } });
     if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
 
-    const quota = await consumeDailyQuota(user.userId, "generation", env.dailyGenerationQuota);
-    if (!quota.allowed) {
-      return reply.code(429).send({
-        error: "quota_exceeded",
-        message: `Daily PDF-generation limit (${quota.limit}) reached. Try again tomorrow.`,
-      });
-    }
-
     const file = await req.file();
     if (!file) return reply.code(400).send({ error: "missing_file", message: "Upload a PDF file." });
     if (file.mimetype !== "application/pdf") {
@@ -71,6 +64,30 @@ export async function generationRoutes(app: FastifyInstance) {
       return reply.code(413).send({
         error: "file_too_large",
         message: `PDF exceeds the ${env.maxUploadBytes / (1024 * 1024)}MB limit.`,
+      });
+    }
+
+    let pageCount: number;
+    try {
+      const pdf = await PDFDocument.load(buffer, { ignoreEncryption: true });
+      pageCount = pdf.getPageCount();
+    } catch {
+      return reply.code(400).send({ error: "invalid_pdf", message: "The uploaded file could not be read as a PDF." });
+    }
+
+    const pageLimit = await getEffectiveQuotaLimit(user.userId, "pdf_page_limit", env.maxPdfPages);
+    if (pageCount > pageLimit) {
+      return reply.code(413).send({
+        error: "pdf_page_limit_exceeded",
+        message: `This PDF has ${pageCount} pages. Your upload limit is ${pageLimit} pages.`,
+      });
+    }
+
+    const quota = await consumeDailyQuota(user.userId, "generation", env.dailyGenerationQuota);
+    if (!quota.allowed) {
+      return reply.code(429).send({
+        error: "quota_exceeded",
+        message: `Daily PDF-generation limit (${quota.limit}) reached. Try again tomorrow.`,
       });
     }
 

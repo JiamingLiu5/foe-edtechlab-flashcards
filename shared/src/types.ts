@@ -39,6 +39,8 @@ export interface CardDTO {
   tags: string[];
   source: string | null;
   includeInQuiz: boolean;
+  /** Set via the Study page's "All done" action — excluded from future Study sessions until un-retired. */
+  retired: boolean;
   createdAt: string;
 }
 
@@ -89,8 +91,6 @@ export type ReviewOutcome = "again" | "hard" | "good" | "easy";
 export interface ReviewResultDTO {
   cardId: string;
   outcome: ReviewOutcome;
-  easeFactor: number;
-  intervalDays: number;
   dueAt: string;
 }
 
@@ -98,7 +98,16 @@ export interface DueCardDTO {
   card: CardDTO | null;
   isNew: boolean;
   nextDueAt: string | null;
+  /** Minutes until the card would come back for each outcome — the student's configured Study intervals. */
   intervalPreviews: Record<ReviewOutcome, number>;
+}
+
+/** Student-configurable minutes until a card comes back after each Study outcome (applies across all their decks). */
+export interface StudySettingsDTO {
+  againMinutes: number;
+  hardMinutes: number;
+  goodMinutes: number;
+  easyMinutes: number;
 }
 
 export interface SelfCheckGradeDTO {
@@ -127,7 +136,7 @@ export interface ApiErrorDTO {
   message: string;
 }
 
-export type QuotaBucket = "generation" | "grading" | "deck_review";
+export type QuotaBucket = "generation" | "grading" | "deck_review" | "pdf_page_limit";
 
 export interface QuotaBucketDTO {
   bucket: QuotaBucket;
@@ -136,6 +145,7 @@ export interface QuotaBucketDTO {
   limit: number;
   defaultLimit: number;
   overridden: boolean;
+  scope: "daily" | "per_upload";
 }
 
 export interface AdminUserQuotaDTO {

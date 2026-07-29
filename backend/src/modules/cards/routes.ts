@@ -54,32 +54,33 @@ export async function cardRoutes(app: FastifyInstance) {
     }
   );
 
-  app.patch<{ Params: { id: string; cardId: string }; Body: { front?: string; back?: string; tags?: string[]; includeInQuiz?: boolean } }>(
-    "/api/decks/:id/cards/:cardId",
-    async (req, reply) => {
-      const user = requireUser(req, reply);
-      if (!user) return;
+  app.patch<{
+    Params: { id: string; cardId: string };
+    Body: { front?: string; back?: string; tags?: string[]; includeInQuiz?: boolean; retired?: boolean };
+  }>("/api/decks/:id/cards/:cardId", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
 
-      const deck = await assertDeckOwnership(req.params.id, user.userId);
-      if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
+    const deck = await assertDeckOwnership(req.params.id, user.userId);
+    if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
 
-      const card = await prisma.card.findFirst({ where: { id: req.params.cardId, deckId: deck.id } });
-      if (!card) return reply.code(404).send({ error: "not_found", message: "Card not found." });
+    const card = await prisma.card.findFirst({ where: { id: req.params.cardId, deckId: deck.id } });
+    if (!card) return reply.code(404).send({ error: "not_found", message: "Card not found." });
 
-      const updated = await prisma.card.update({
-        where: { id: card.id },
-        data: {
-          front: req.body?.front?.trim() || card.front,
-          back: req.body?.back?.trim() || card.back,
-          tags: req.body?.tags
-            ? [...new Set(req.body.tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 20)
-            : card.tags,
-          includeInQuiz: typeof req.body?.includeInQuiz === "boolean" ? req.body.includeInQuiz : card.includeInQuiz,
-        },
-      });
-      return reply.send({ card: updated });
-    }
-  );
+    const updated = await prisma.card.update({
+      where: { id: card.id },
+      data: {
+        front: req.body?.front?.trim() || card.front,
+        back: req.body?.back?.trim() || card.back,
+        tags: req.body?.tags
+          ? [...new Set(req.body.tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 20)
+          : card.tags,
+        includeInQuiz: typeof req.body?.includeInQuiz === "boolean" ? req.body.includeInQuiz : card.includeInQuiz,
+        retired: typeof req.body?.retired === "boolean" ? req.body.retired : card.retired,
+      },
+    });
+    return reply.send({ card: updated });
+  });
 
   app.delete<{ Params: { id: string; cardId: string } }>("/api/decks/:id/cards/:cardId", async (req, reply) => {
     const user = requireUser(req, reply);

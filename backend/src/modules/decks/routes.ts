@@ -7,24 +7,25 @@ export async function listDeckSummariesForOwner(ownerId: string): Promise<DeckSu
   const decks = await prisma.deck.findMany({
     where: { ownerId },
     orderBy: { createdAt: "desc" },
-    include: { cards: { select: { id: true } } },
+    include: { cards: { select: { id: true, retired: true } } },
   });
 
   const now = new Date();
   return Promise.all(
     decks.map(async (deck) => {
-      const cardIds = deck.cards.map((c) => c.id);
-      const [dueCount, forgottenCount] = cardIds.length
+      // Retired cards no longer come up in Study, so they shouldn't count as due or forgotten either.
+      const activeCardIds = deck.cards.filter((c) => !c.retired).map((c) => c.id);
+      const [dueCount, forgottenCount] = activeCardIds.length
         ? await Promise.all([
-            countDue(cardIds, ownerId, now),
-            countForgotten(cardIds, ownerId),
+            countDue(activeCardIds, ownerId, now),
+            countForgotten(activeCardIds, ownerId),
           ])
         : [0, 0];
 
       return {
         id: deck.id,
         name: deck.name,
-        cardCount: cardIds.length,
+        cardCount: deck.cards.length,
         dueCount,
         forgottenCount,
         createdAt: deck.createdAt.toISOString(),

@@ -108,7 +108,7 @@
 {#if error}<p class="error">{error}</p>{/if}
 
 <div class="quota card-surface">
-  <h2>Daily AI quotas</h2>
+  <h2>Usage limits</h2>
   {#if quotaError}<p class="error">{quotaError}</p>{/if}
   {#if quotaLoading}
     <p class="muted">Loading…</p>
@@ -118,7 +118,7 @@
         <thead>
           <tr>
             <th>Bucket</th>
-            <th>Used today</th>
+            <th>Usage</th>
             <th>Limit</th>
             <th></th>
           </tr>
@@ -130,7 +130,14 @@
                 {b.label}
                 {#if b.overridden}<span class="pill overridden">custom</span>{/if}
               </td>
-              <td class="muted">{b.used} / {b.limit}{#if b.overridden} <span class="muted small">(default {b.defaultLimit})</span>{/if}</td>
+              <td class="muted">
+                {#if b.scope === "daily"}
+                  {b.used} / {b.limit} today
+                {:else}
+                  {b.limit} pages per PDF
+                {/if}
+                {#if b.overridden} <span class="muted small">(default {b.defaultLimit})</span>{/if}
+              </td>
               <td>
                 <input
                   class="limit-input"
@@ -142,11 +149,13 @@
                 />
               </td>
               <td class="actions">
-                <button class="btn" disabled={quotaBusy === b.bucket} on:click={() => saveOverride(b.bucket)}>Save limit</button>
+                <button class="btn" disabled={quotaBusy === b.bucket} on:click={() => saveOverride(b.bucket)}>{b.scope === "daily" ? "Save limit" : "Save maximum"}</button>
                 {#if b.overridden}
                   <button class="btn" disabled={quotaBusy === b.bucket} on:click={() => clearOverride(b.bucket)}>Use default</button>
                 {/if}
-                <button class="btn btn-danger" disabled={quotaBusy === b.bucket} on:click={() => resetQuota(b.bucket)}>Reset usage</button>
+                {#if b.scope === "daily"}
+                  <button class="btn btn-danger" disabled={quotaBusy === b.bucket} on:click={() => resetQuota(b.bucket)}>Reset usage</button>
+                {/if}
               </td>
             </tr>
           {/each}

@@ -11,6 +11,7 @@ import type {
   ReviewResultDTO,
   SelfCheckGradeDTO,
   SignupResponseDTO,
+  StudySettingsDTO,
   UserDTO,
 } from "@flashcards/shared";
 
@@ -76,8 +77,11 @@ export const api = {
     request<{ cards: CardDTO[] }>(`/decks/${deckId}/cards`, { method: "POST", body: JSON.stringify({ front, back, tags }) }),
   createCardsBulk: (deckId: string, cards: { front: string; back: string; tags?: string[] }[]) =>
     request<{ cards: CardDTO[] }>(`/decks/${deckId}/cards`, { method: "POST", body: JSON.stringify({ cards }) }),
-  updateCard: (deckId: string, cardId: string, card: { front: string; back: string; tags?: string[]; includeInQuiz?: boolean }) =>
-    request<{ card: CardDTO }>(`/decks/${deckId}/cards/${cardId}`, { method: "PATCH", body: JSON.stringify(card) }),
+  updateCard: (
+    deckId: string,
+    cardId: string,
+    card: { front?: string; back?: string; tags?: string[]; includeInQuiz?: boolean; retired?: boolean }
+  ) => request<{ card: CardDTO }>(`/decks/${deckId}/cards/${cardId}`, { method: "PATCH", body: JSON.stringify(card) }),
   deleteCard: (deckId: string, cardId: string) => request<{ ok: true }>(`/decks/${deckId}/cards/${cardId}`, { method: "DELETE" }),
 
   uploadPdf: (deckId: string, file: File) => {
@@ -101,6 +105,9 @@ export const api = {
   nextDueCard: (deckId: string) => request<DueCardDTO>(`/decks/${deckId}/study/next`),
   submitReview: (cardId: string, outcome: ReviewOutcome) =>
     request<ReviewResultDTO>("/reviews", { method: "POST", body: JSON.stringify({ cardId, outcome }) }),
+  getStudySettings: () => request<StudySettingsDTO>("/account/study-settings"),
+  updateStudySettings: (settings: StudySettingsDTO) =>
+    request<StudySettingsDTO>("/account/study-settings", { method: "PUT", body: JSON.stringify(settings) }),
   getQuiz: (deckId: string) =>
     request<{ questions: { cardId: string; front: string; options: string[]; answer: string }[] }>(`/decks/${deckId}/quiz`),
   getFillQuiz: (deckId: string) =>

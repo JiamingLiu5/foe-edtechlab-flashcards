@@ -1,8 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../db.js";
 import { requireUser } from "../auth/plugin.js";
-import { nextSm2State } from "../../lib/sm2.js";
+import { nextDueAt, type StudyIntervals } from "../../lib/reviewSchedule.js";
 import type { ReviewOutcome } from "@flashcards/shared";
+
+async function getStudyIntervals(userId: string): Promise<StudyIntervals> {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { studyAgainMinutes: true, studyHardMinutes: true, studyGoodMinutes: true, studyEasyMinutes: true },
+  });
+  return { again: user.studyAgainMinutes, hard: user.studyHardMinutes, good: user.studyGoodMinutes, easy: user.studyEasyMinutes };
+}
 
 export async function studyRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>("/api/decks/:id/study/next", async (req, reply) => {
@@ -12,7 +20,10 @@ export async function studyRoutes(app: FastifyInstance) {
     const deck = await prisma.deck.findFirst({ where: { id: req.params.id, ownerId: user.userId } });
     if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
 
-    const cards = await prisma.card.findMany({ where: { deckId: deck.id }, orderBy: { createdAt: "asc" } });
+    const cards = await prisma.card.findMany({
+      where: { deckId: deck.id, retired: false },
+      orderBy: { createdAt: "asc" },
+    });
     const now = new Date();
     const reviews = await prisma.review.findMany({
       where: { userId: user.userId, cardId: { in: cards.map((card) => card.id) } },
@@ -29,21 +40,14 @@ export async function studyRoutes(app: FastifyInstance) {
         return aDue - bDue;
       });
     const card = due[0] ?? null;
-    const current = card ? latest.get(card.id) : undefined;
-    const previous = current
-      ? { easeFactor: current.easeFactor, intervalDays: current.intervalDays, repetitions: current.repetitions }
-      : null;
-    const intervalPreviews = Object.fromEntries(
-      (["again", "hard", "good", "easy"] as ReviewOutcome[]).map((outcome) => [
-        outcome,
-        nextSm2State(previous, outcome).intervalDays,
-      ])
-    );
-    const nextDueAt = card
+
+    // Every card shares the same fixed per-outcome delay, so the preview is just the student's configured intervals.
+    const intervalPreviews = await getStudyIntervals(user.userId);
+    const nextDueAtIso = card
       ? null
       : [...latest.values()].sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())[0]?.dueAt.toISOString() ?? null;
 
-    return reply.send({ card, isNew: !!card && !current, nextDueAt, intervalPreviews });
+    return reply.send({ card, isNew: !!card && !latest.has(card.id), nextDueAt: nextDueAtIso, intervalPreviews });
   });
 
   app.post<{ Body: { cardId: string; outcome: ReviewOutcome } }>("/api/reviews", async (req, reply) => {
@@ -60,36 +64,14 @@ export async function studyRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: "not_found", message: "Card not found." });
     }
 
-    const previous = await prisma.review.findFirst({
-      where: { userId: user.userId, cardId },
-      orderBy: { reviewedAt: "desc" },
-    });
-    const next = nextSm2State(
-      previous
-        ? { easeFactor: previous.easeFactor, intervalDays: previous.intervalDays, repetitions: previous.repetitions }
-        : null,
-      outcome
-    );
+    const intervals = await getStudyIntervals(user.userId);
+    const dueAt = nextDueAt(outcome, intervals);
 
     const review = await prisma.review.create({
-      data: {
-        userId: user.userId,
-        cardId,
-        outcome,
-        easeFactor: next.easeFactor,
-        intervalDays: next.intervalDays,
-        repetitions: next.repetitions,
-        dueAt: next.dueAt,
-      },
+      data: { userId: user.userId, cardId, outcome, dueAt },
     });
 
-    return reply.send({
-      cardId,
-      outcome,
-      easeFactor: review.easeFactor,
-      intervalDays: review.intervalDays,
-      dueAt: review.dueAt.toISOString(),
-    });
+    return reply.send({ cardId, outcome, dueAt: review.dueAt.toISOString() });
   });
 
   app.get<{ Params: { id: string }; Querystring: { mode?: string } }>("/api/decks/:id/quiz", async (req, reply) => {

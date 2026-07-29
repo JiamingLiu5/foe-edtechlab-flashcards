@@ -153,7 +153,7 @@
       <p>Uploading…</p>
     {:else}
       <p>Drag a PDF here, or click to choose a file</p>
-      <p class="muted small">Max 20MB</p>
+      <p class="muted small">Max 20MB. Your administrator may also set a page limit.</p>
     {/if}
   </div>
   <input

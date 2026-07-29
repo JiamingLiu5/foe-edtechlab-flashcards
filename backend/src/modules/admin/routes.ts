@@ -7,10 +7,11 @@ import { listDeckSummariesForOwner } from "../decks/routes.js";
 import { getDailyQuotaUsage, getQuotaOverridesForUser, resetDailyQuota, setQuotaOverride } from "../../lib/quota.js";
 import type { AdminUserDTO, AdminUserQuotaDTO, QuotaBucket, QuotaBucketDTO } from "@flashcards/shared";
 
-const QUOTA_BUCKETS: { bucket: QuotaBucket; label: string; defaultLimit: number }[] = [
-  { bucket: "generation", label: "PDF / URL generation", defaultLimit: env.dailyGenerationQuota },
-  { bucket: "grading", label: "Self-check grading", defaultLimit: env.dailyGradingQuota },
-  { bucket: "deck_review", label: "AI deck review", defaultLimit: env.dailyDeckReviewQuota },
+const QUOTA_BUCKETS: { bucket: QuotaBucket; label: string; defaultLimit: number; scope: "daily" | "per_upload" }[] = [
+  { bucket: "generation", label: "PDF / URL generation", defaultLimit: env.dailyGenerationQuota, scope: "daily" },
+  { bucket: "grading", label: "Self-check grading", defaultLimit: env.dailyGradingQuota, scope: "daily" },
+  { bucket: "deck_review", label: "AI deck review", defaultLimit: env.dailyDeckReviewQuota, scope: "daily" },
+  { bucket: "pdf_page_limit", label: "Maximum PDF pages", defaultLimit: env.maxPdfPages, scope: "per_upload" },
 ];
 
 function toAdminUserDTO(user: {
@@ -182,10 +183,10 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const overrides = await getQuotaOverridesForUser(targetUser.id);
     const buckets: QuotaBucketDTO[] = await Promise.all(
-      QUOTA_BUCKETS.map(async ({ bucket, label, defaultLimit }) => {
+      QUOTA_BUCKETS.map(async ({ bucket, label, defaultLimit, scope }) => {
         const override = overrides.get(bucket);
-        const used = await getDailyQuotaUsage(targetUser.id, bucket);
-        return { bucket, label, used, limit: override ?? defaultLimit, defaultLimit, overridden: override !== undefined };
+        const used = scope === "daily" ? await getDailyQuotaUsage(targetUser.id, bucket) : 0;
+        return { bucket, label, used, limit: override ?? defaultLimit, defaultLimit, overridden: override !== undefined, scope };
       })
     );
 
