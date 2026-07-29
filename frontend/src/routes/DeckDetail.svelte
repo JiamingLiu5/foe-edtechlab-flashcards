@@ -13,6 +13,13 @@
   let tagFilter = "";
   let cardIndex = 0;
   let flipped = false;
+  let editing = false;
+  let editingCardId: string | null = null;
+  let editFront = "";
+  let editBack = "";
+  let editTags = "";
+  let editSaving = false;
+  let editError = "";
 
   $: allTags = [...new Set(cards.flatMap((card) => card.tags))].sort();
   $: visibleCards = cards.filter((card) => {
@@ -39,8 +46,41 @@
     await load();
   }
 
+  function startEdit(card: CardDTO) {
+    editFront = card.front;
+    editBack = card.back;
+    editTags = card.tags.join(", ");
+    editError = "";
+    editingCardId = card.id;
+    editing = true;
+  }
+
+  async function saveEdit(card: CardDTO) {
+    if (!editFront.trim() || !editBack.trim()) {
+      editError = "Both the question and answer are required.";
+      return;
+    }
+
+    editSaving = true;
+    editError = "";
+    try {
+      await api.updateCard(deckId, card.id, {
+        front: editFront.trim(),
+        back: editBack.trim(),
+        tags: editTags.split(",").map((tag) => tag.trim()).filter(Boolean),
+      });
+      editing = false;
+      editingCardId = null;
+      await load();
+    } catch (error) {
+      editError = error instanceof ApiError ? error.message : "Couldn't save this card.";
+    } finally {
+      editSaving = false;
+    }
+  }
+
   function moveCard(direction: -1 | 1) {
-    if (visibleCards.length < 2) return;
+    if (visibleCards.length < 2 || editing) return;
     cardIndex = (cardIndex + direction + visibleCards.length) % visibleCards.length;
     flipped = false;
   }
@@ -103,7 +143,7 @@
 {:else}
   {@const card = currentCard!}
   <div class="viewer">
-    <button class="card-arrow" on:click={() => moveCard(-1)} disabled={visibleCards.length < 2} aria-label="Previous card">&larr;</button>
+    <button class="card-arrow" on:click={() => moveCard(-1)} disabled={visibleCards.length < 2 || editing} aria-label="Previous card">&larr;</button>
     <div
       class="card-surface flashcard"
       class:flipped
@@ -122,14 +162,28 @@
       <div class="face"><Katex text={flipped ? card.back : card.front} /></div>
       <p class="muted small hint">Click the card to {flipped ? "see the question" : "reveal the answer"}</p>
     </div>
-    <button class="card-arrow" on:click={() => moveCard(1)} disabled={visibleCards.length < 2} aria-label="Next card">&rarr;</button>
+    <button class="card-arrow" on:click={() => moveCard(1)} disabled={visibleCards.length < 2 || editing} aria-label="Next card">&rarr;</button>
   </div>
   <div class="card-meta">
     <span class="muted small">Card {cardIndex + 1} of {visibleCards.length}</span>
     {#if card.source && card.source !== "manual"}<span class="source muted small">{card.source}</span>{/if}
     {#if card.tags.length}<div class="tags">{#each card.tags as tag}<span>{tag}</span>{/each}</div>{/if}
+    <button class="edit" on:click={() => startEdit(card)}>Edit card</button>
     <button class="delete" on:click={() => removeCard(card.id)}>Delete card</button>
   </div>
+  {#if editing && editingCardId === card.id}
+    <form class="card-surface editor" on:submit|preventDefault={() => saveEdit(card)}>
+      <h2>Edit card</h2>
+      <textarea rows="3" bind:value={editFront} placeholder="Question / front" disabled={editSaving}></textarea>
+      <textarea rows="4" bind:value={editBack} placeholder="Answer / back" disabled={editSaving}></textarea>
+      <input bind:value={editTags} placeholder="Tags, comma separated" disabled={editSaving} />
+      {#if editError}<p class="error">{editError}</p>{/if}
+      <div class="editor-actions">
+        <button class="btn" type="button" on:click={() => { editing = false; editingCardId = null; }} disabled={editSaving}>Cancel</button>
+        <button class="btn btn-primary" type="submit" disabled={editSaving}>{editSaving ? "Saving…" : "Save changes"}</button>
+      </div>
+    </form>
+  {/if}
 {/if}
 
 <style>
@@ -137,6 +191,9 @@
   .back:hover { color: var(--text); }
   .actions { display: flex; gap: 0.6rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
   .actions a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+  .actions .btn { min-height: 2.75rem; padding: 0.65rem 1.2rem; background: var(--surface); border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); font-weight: 600; }
+  .actions .btn-primary { background: #2563eb; border-color: #2563eb; box-shadow: 0 5px 12px rgba(37, 99, 235, 0.28); }
+  .actions .btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
   .error { color: var(--bad); margin-bottom: 1rem; }
   .small { font-size: 0.8rem; }
   .filters { display: flex; gap: 0.6rem; margin-bottom: 1rem; }
@@ -169,6 +226,12 @@
     background: none; border: none; color: var(--text-dim); font-size: 0.8rem;
   }
   .delete:hover { color: var(--bad); }
+  .edit { background: none; border: none; color: var(--accent); font-size: 0.8rem; }
+  .edit:hover { color: var(--accent-strong); }
+  .editor { margin-top: 1.25rem; padding: 1.2rem; display: flex; flex-direction: column; gap: 0.7rem; }
+  .editor h2 { font-size: 1rem; margin: 0; }
+  .editor textarea, .editor input { width: 100%; }
+  .editor-actions { display: flex; gap: 0.6rem; justify-content: flex-end; }
   .empty-state { padding: 2rem; text-align: center; }
   @media (max-width: 600px) {
     .viewer { grid-template-columns: 1fr 1fr; }

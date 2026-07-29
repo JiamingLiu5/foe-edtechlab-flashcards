@@ -181,14 +181,15 @@
   .back:hover { color: var(--text); }
   .tabs { display: flex; gap: 0.5rem; margin: 1rem 0 1.25rem; }
   .tab {
-    border: 1px solid var(--border);
-    background: var(--surface-2);
-    color: var(--text-dim);
-    border-radius: 8px;
-    padding: 0.5rem 1rem;
-    font-size: 0.9rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    color: var(--text);
+    border-radius: 10px;
+    padding: 0.72rem 1.2rem;
+    font-size: 0.95rem;
+    font-weight: 600;
   }
-  .tab.active { color: var(--text); border-color: var(--accent); background: var(--surface); font-weight: 600; }
+  .tab.active { color: white; border-color: #2563eb; background: #2563eb; box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25); }
   .dropzone {
     border: 2px dashed var(--border);
     padding: 3rem 1.5rem;

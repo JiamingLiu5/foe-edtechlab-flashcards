@@ -175,8 +175,22 @@
   .back { background: none; border: none; color: var(--text-dim); margin-bottom: 1rem; padding: 0; }
   .back:hover { color: var(--text); }
   .mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1.5rem; }
-  .mode-card { color: var(--text); padding: 1.5rem; text-align: left; display: flex; flex-direction: column; gap: 0.5rem; }
-  .mode-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .mode-card {
+    color: var(--text);
+    min-height: 170px;
+    padding: 2rem;
+    text-align: left;
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+    gap: 0.7rem;
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 19%, var(--surface)), var(--surface));
+    font-size: 1rem;
+    transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .mode-card strong { font-size: 1.15rem; }
+  .mode-card:hover, .mode-card:focus-visible { border-color: var(--accent-strong); box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 23%, transparent); transform: translateY(-3px); outline: none; }
   .quiz-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1rem; }
   .quiz-heading h1 { margin: 0; }
   .small { font-size: 0.8rem; }

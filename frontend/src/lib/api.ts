@@ -66,6 +66,8 @@ export const api = {
     request<{ cards: CardDTO[] }>(`/decks/${deckId}/cards`, { method: "POST", body: JSON.stringify({ front, back, tags }) }),
   createCardsBulk: (deckId: string, cards: { front: string; back: string; tags?: string[] }[]) =>
     request<{ cards: CardDTO[] }>(`/decks/${deckId}/cards`, { method: "POST", body: JSON.stringify({ cards }) }),
+  updateCard: (deckId: string, cardId: string, card: { front: string; back: string; tags?: string[] }) =>
+    request<{ card: CardDTO }>(`/decks/${deckId}/cards/${cardId}`, { method: "PATCH", body: JSON.stringify(card) }),
   deleteCard: (deckId: string, cardId: string) => request<{ ok: true }>(`/decks/${deckId}/cards/${cardId}`, { method: "DELETE" }),
 
   uploadPdf: (deckId: string, file: File) => {
