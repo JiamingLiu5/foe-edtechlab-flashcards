@@ -25,6 +25,7 @@ async function processImportJob(job: {
   sourceType: string;
   sourceUrl: string | null;
   uploadPath: string | null;
+  cardLimit: number;
 }) {
   await prisma.generationJob.update({ where: { id: job.id }, data: { status: "extracting" } });
 
@@ -45,11 +46,14 @@ async function processImportJob(job: {
 
   await prisma.generationJob.update({ where: { id: job.id }, data: { status: "generating" } });
 
-  const generated = await generateCardsFromText({
+  // Prompt the model with the requested limit and also truncate defensively:
+  // provider output is never trusted as the enforcement mechanism.
+  const generated = (await generateCardsFromText({
     slideText: sourceText,
     filename: job.sourceFilename,
+    cardLimit: job.cardLimit,
     styleReferenceCards,
-  });
+  })).slice(0, job.cardLimit);
 
   if (!generated.length) {
     await prisma.generationJob.update({

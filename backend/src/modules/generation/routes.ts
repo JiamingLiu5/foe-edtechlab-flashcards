@@ -19,6 +19,7 @@ function toDTO(job: Awaited<ReturnType<typeof loadJob>>): GenerationJobDTO {
     kind: job.kind,
     sourceType: job.sourceType,
     sourceFilename: job.sourceFilename,
+    cardLimit: job.cardLimit,
     error: job.error,
     createdAt: job.createdAt.toISOString(),
     drafts: job.drafts.map((d) => ({
@@ -36,6 +37,12 @@ function toDTO(job: Awaited<ReturnType<typeof loadJob>>): GenerationJobDTO {
       status: d.status,
     })),
   };
+}
+
+function parseCardLimit(value: unknown, maximum: number): number | null {
+  const requested = value === undefined || value === "" ? Math.min(25, maximum) : Number(value);
+  if (!Number.isInteger(requested) || requested < 1 || requested > maximum) return null;
+  return requested;
 }
 
 function loadJob(jobId: string) {
@@ -64,6 +71,17 @@ export async function generationRoutes(app: FastifyInstance) {
       return reply.code(413).send({
         error: "file_too_large",
         message: `PDF exceeds the ${env.maxUploadBytes / (1024 * 1024)}MB limit.`,
+      });
+    }
+
+    // Reading the file ensures multipart fields that follow it have been parsed too.
+    const maxGeneratedCards = await getEffectiveQuotaLimit(user.userId, "generated_card_limit", env.maxGeneratedCards);
+    const multipartFields = (file as { fields?: Record<string, { value?: unknown }> }).fields;
+    const cardLimit = parseCardLimit(multipartFields?.cardLimit?.value, maxGeneratedCards);
+    if (cardLimit === null) {
+      return reply.code(400).send({
+        error: "invalid_card_limit",
+        message: `Choose a whole number of cards from 1 to ${maxGeneratedCards}.`,
       });
     }
 
@@ -102,6 +120,7 @@ export async function generationRoutes(app: FastifyInstance) {
         requestedById: user.userId,
         sourceFilename: file.filename,
         uploadPath,
+        cardLimit,
         status: "queued",
       },
     });
@@ -111,7 +130,7 @@ export async function generationRoutes(app: FastifyInstance) {
     return reply.code(202).send({ job: toDTO({ ...job, drafts: [] }) });
   });
 
-  app.post<{ Params: { id: string }; Body: { url?: string } }>("/api/decks/:id/generate-url", async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: { url?: string; cardLimit?: number } }>("/api/decks/:id/generate-url", async (req, reply) => {
     const user = requireUser(req, reply);
     if (!user) return;
 
@@ -125,6 +144,15 @@ export async function generationRoutes(app: FastifyInstance) {
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error();
     } catch {
       return reply.code(400).send({ error: "invalid_url", message: "Enter a valid http(s) URL." });
+    }
+
+    const maxGeneratedCards = await getEffectiveQuotaLimit(user.userId, "generated_card_limit", env.maxGeneratedCards);
+    const cardLimit = parseCardLimit(req.body?.cardLimit, maxGeneratedCards);
+    if (cardLimit === null) {
+      return reply.code(400).send({
+        error: "invalid_card_limit",
+        message: `Choose a whole number of cards from 1 to ${maxGeneratedCards}.`,
+      });
     }
 
     const quota = await consumeDailyQuota(user.userId, "generation", env.dailyGenerationQuota);
@@ -143,6 +171,7 @@ export async function generationRoutes(app: FastifyInstance) {
         sourceType: "url",
         sourceFilename: url,
         sourceUrl: url,
+        cardLimit,
         status: "queued",
       },
     });

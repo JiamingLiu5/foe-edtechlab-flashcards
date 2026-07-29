@@ -59,6 +59,7 @@ export async function extractPdfText(params: { pdfBase64: string; filename: stri
 export async function generateCardsFromText(params: {
   slideText: string;
   filename: string;
+  cardLimit: number;
   styleReferenceCards: { front: string; back: string }[];
 }): Promise<GeneratedCard[]> {
   const response = await genai.models.generateContent({

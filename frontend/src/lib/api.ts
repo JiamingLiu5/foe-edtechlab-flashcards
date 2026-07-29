@@ -84,13 +84,14 @@ export const api = {
   ) => request<{ card: CardDTO }>(`/decks/${deckId}/cards/${cardId}`, { method: "PATCH", body: JSON.stringify(card) }),
   deleteCard: (deckId: string, cardId: string) => request<{ ok: true }>(`/decks/${deckId}/cards/${cardId}`, { method: "DELETE" }),
 
-  uploadPdf: (deckId: string, file: File) => {
+  uploadPdf: (deckId: string, file: File, cardLimit: number) => {
     const form = new FormData();
+    form.append("cardLimit", String(cardLimit));
     form.append("file", file);
     return request<{ job: GenerationJobDTO }>(`/decks/${deckId}/generate`, { method: "POST", body: form });
   },
-  importUrl: (deckId: string, url: string) =>
-    request<{ job: GenerationJobDTO }>(`/decks/${deckId}/generate-url`, { method: "POST", body: JSON.stringify({ url }) }),
+  importUrl: (deckId: string, url: string, cardLimit: number) =>
+    request<{ job: GenerationJobDTO }>(`/decks/${deckId}/generate-url`, { method: "POST", body: JSON.stringify({ url, cardLimit }) }),
   startDeckReview: (deckId: string) =>
     request<{ job: GenerationJobDTO }>(`/decks/${deckId}/review`, { method: "POST", body: JSON.stringify({}) }),
   getJob: (jobId: string) => request<{ job: GenerationJobDTO }>(`/generation-jobs/${jobId}`),

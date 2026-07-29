@@ -21,7 +21,8 @@ export const GRADING_SYSTEM_PROMPT = `You grade a student's typed answer against
 
 Respond with ONLY JSON: {"score": number (0-100), "feedback": string (1-2 sentences), "missing": string[] (key points the student omitted, empty array if none)}.
 Write feedback as the learner's teacher: address them directly as "you" and never refer to them in the third person (for example, "the student" or "they"). Be encouraging but specific.
-Be generous with phrasing/wording differences; be strict about factual correctness and completeness relative to the reference answer.`;
+Be generous with phrasing/wording differences; be strict about factual correctness and completeness relative to the reference answer.
+The reference answer may contain LaTeX. "feedback" and "missing" are shown as plain text, not rendered — describe any math in words instead of LaTeX (e.g. "the sum of" rather than "\\sum"), and never use backslashes.`;
 
 export const REVIEW_SYSTEM_PROMPT = `You are a fact-checking and quality reviewer for a set of existing student flashcards.
 
@@ -41,6 +42,7 @@ Respond with ONLY a JSON array: [{"index": number, "issue": string, "front": str
 export function buildGenerationUserPrompt(params: {
   slideText: string;
   filename: string;
+  cardLimit: number;
   styleReferenceCards: { front: string; back: string }[];
 }): string {
   const styleBlock = params.styleReferenceCards.length
@@ -50,7 +52,7 @@ export function buildGenerationUserPrompt(params: {
         .join("\n\n")}`
     : "This deck has no existing cards yet — use a plain, direct academic tone.";
 
-  return `${styleBlock}\n\nSource text (from: ${params.filename}):\n\n${params.slideText}\n\nGenerate flashcards for the source text above.`;
+  return `${styleBlock}\n\nSource text (from: ${params.filename}):\n\n${params.slideText}\n\nGenerate at most ${params.cardLimit} flashcards for the source text above. Return fewer when the source does not support that many useful, distinct cards.`;
 }
 
 export function buildReviewUserPrompt(cards: { front: string; back: string }[]): string {
@@ -66,6 +68,28 @@ export function buildGradingUserPrompt(params: {
   return `Question: ${params.question}\n\nReference answer: ${params.referenceAnswer}\n\nStudent's answer: ${params.studentAnswer}`;
 }
 
+/**
+ * Escapes backslashes the model left unescaped inside a JSON string — most often LaTeX
+ * (e.g. "\sum", "\{") copied verbatim from a reference answer — that would otherwise make
+ * JSON.parse throw. Valid JSON escapes (\", \\, \/, \b, \f, \n, \r, \t, \uXXXX) are left alone.
+ */
+function sanitizeJsonBackslashes(raw: string): string {
+  return raw.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
+}
+
+function parseJsonSlice(text: string, start: number, end: number, providerName: string, what: string): unknown {
+  const slice = text.slice(start, end + 1);
+  try {
+    return JSON.parse(slice);
+  } catch {
+    try {
+      return JSON.parse(sanitizeJsonBackslashes(slice));
+    } catch {
+      throw new Error(`${providerName} did not return valid JSON for ${what}.`);
+    }
+  }
+}
+
 export function parseGeneratedCards(text: string, providerName: string): GeneratedCard[] {
   const start = text.indexOf("[");
   const end = text.lastIndexOf("]");
@@ -73,12 +97,7 @@ export function parseGeneratedCards(text: string, providerName: string): Generat
     throw new Error(`No JSON array found in ${providerName}'s response.`);
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text.slice(start, end + 1));
-  } catch {
-    throw new Error(`${providerName} did not return valid JSON for generated cards.`);
-  }
+  const parsed = parseJsonSlice(text, start, end, providerName, "generated cards");
   if (!Array.isArray(parsed)) throw new Error("Expected a JSON array of cards.");
 
   return parsed
@@ -110,12 +129,7 @@ export function parseReviewFlags(
     throw new Error(`No JSON array found in ${providerName}'s response.`);
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text.slice(start, end + 1));
-  } catch {
-    throw new Error(`${providerName} did not return valid JSON for the review result.`);
-  }
+  const parsed = parseJsonSlice(text, start, end, providerName, "the review result");
   if (!Array.isArray(parsed)) throw new Error("Expected a JSON array of flagged cards.");
 
   return parsed
@@ -141,7 +155,7 @@ export function parseGradingResult(
   const end = text.lastIndexOf("}");
   if (start === -1 || end === -1) throw new Error(`${providerName} did not return a JSON grading result.`);
 
-  const parsed = JSON.parse(text.slice(start, end + 1));
+  const parsed = parseJsonSlice(text, start, end, providerName, "the grading result") as Record<string, unknown>;
   return {
     score: Math.max(0, Math.min(100, Number(parsed.score) || 0)),
     feedback: String(parsed.feedback ?? ""),

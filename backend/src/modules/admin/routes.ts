@@ -7,11 +7,12 @@ import { listDeckSummariesForOwner } from "../decks/routes.js";
 import { getDailyQuotaUsage, getQuotaOverridesForUser, resetDailyQuota, setQuotaOverride } from "../../lib/quota.js";
 import type { AdminUserDTO, AdminUserQuotaDTO, QuotaBucket, QuotaBucketDTO } from "@flashcards/shared";
 
-const QUOTA_BUCKETS: { bucket: QuotaBucket; label: string; defaultLimit: number; scope: "daily" | "per_upload" }[] = [
-  { bucket: "generation", label: "PDF / URL generation", defaultLimit: env.dailyGenerationQuota, scope: "daily" },
-  { bucket: "grading", label: "Self-check grading", defaultLimit: env.dailyGradingQuota, scope: "daily" },
-  { bucket: "deck_review", label: "AI deck review", defaultLimit: env.dailyDeckReviewQuota, scope: "daily" },
-  { bucket: "pdf_page_limit", label: "Maximum PDF pages", defaultLimit: env.maxPdfPages, scope: "per_upload" },
+const QUOTA_BUCKETS: { bucket: QuotaBucket; label: string; defaultLimit: number; scope: "daily" | "per_upload"; usageLabel: string }[] = [
+  { bucket: "generation", label: "PDF / URL generation", defaultLimit: env.dailyGenerationQuota, scope: "daily", usageLabel: "today" },
+  { bucket: "grading", label: "Self-check grading", defaultLimit: env.dailyGradingQuota, scope: "daily", usageLabel: "today" },
+  { bucket: "deck_review", label: "AI deck review", defaultLimit: env.dailyDeckReviewQuota, scope: "daily", usageLabel: "today" },
+  { bucket: "pdf_page_limit", label: "Maximum PDF pages", defaultLimit: env.maxPdfPages, scope: "per_upload", usageLabel: "pages per PDF" },
+  { bucket: "generated_card_limit", label: "Maximum AI-generated cards", defaultLimit: env.maxGeneratedCards, scope: "per_upload", usageLabel: "cards per import" },
 ];
 
 function toAdminUserDTO(user: {
@@ -183,10 +184,10 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const overrides = await getQuotaOverridesForUser(targetUser.id);
     const buckets: QuotaBucketDTO[] = await Promise.all(
-      QUOTA_BUCKETS.map(async ({ bucket, label, defaultLimit, scope }) => {
+      QUOTA_BUCKETS.map(async ({ bucket, label, defaultLimit, scope, usageLabel }) => {
         const override = overrides.get(bucket);
         const used = scope === "daily" ? await getDailyQuotaUsage(targetUser.id, bucket) : 0;
-        return { bucket, label, used, limit: override ?? defaultLimit, defaultLimit, overridden: override !== undefined, scope };
+        return { bucket, label, used, limit: override ?? defaultLimit, defaultLimit, overridden: override !== undefined, scope, usageLabel };
       })
     );
 

@@ -169,7 +169,9 @@
     <div class="prompt-backdrop">
       <dialog open class="card-surface quiz-prompt" aria-labelledby="quiz-prompt-title">
         <h2 id="quiz-prompt-title">Use this card in quizzes?</h2>
-        <p class="muted">You accepted “{quizPromptCard.front}”. Would you like to include it in multiple-choice and fill-in-the-blank quizzes?</p>
+        <p class="muted">You accepted:</p>
+        <div class="accepted-question"><Katex text={quizPromptCard.front} /></div>
+        <p class="muted">Would you like to include it in multiple-choice and fill-in-the-blank quizzes?</p>
         {#if quizPromptError}<p class="error">{quizPromptError}</p>{/if}
         <div class="row">
           <button class="btn btn-primary" on:click={() => chooseQuizPreference(true)} disabled={quizPromptSaving}>
@@ -202,7 +204,8 @@
   .tag.accepted { color: var(--good); }
   .error { color: var(--bad); }
   .prompt-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 1.5rem; background: rgba(11, 14, 20, 0.58); }
-  .quiz-prompt { width: min(100%, 460px); margin: 0; padding: 1.5rem; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32); }
+  .quiz-prompt { position: fixed; inset: 0; width: min(calc(100% - 3rem), 460px); height: fit-content; max-height: calc(100vh - 3rem); margin: auto; padding: 1.5rem; overflow: auto; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32); }
   .quiz-prompt h2 { margin: 0 0 0.65rem; }
   .quiz-prompt p { line-height: 1.5; }
+  .accepted-question { margin: 0.5rem 0 1rem; padding: 0.8rem; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; background: var(--surface-2); font-weight: 600; }
 </style>

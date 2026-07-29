@@ -134,7 +134,7 @@
                 {#if b.scope === "daily"}
                   {b.used} / {b.limit} today
                 {:else}
-                  {b.limit} pages per PDF
+                  {b.limit} {b.usageLabel}
                 {/if}
                 {#if b.overridden} <span class="muted small">(default {b.defaultLimit})</span>{/if}
               </td>

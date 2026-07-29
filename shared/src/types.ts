@@ -62,6 +62,7 @@ export interface GenerationJobDTO {
   kind: GenerationJobKind;
   sourceType: GenerationSourceType;
   sourceFilename: string;
+  cardLimit: number;
   error: string | null;
   createdAt: string;
   drafts: AiDraftDTO[];
@@ -136,7 +137,7 @@ export interface ApiErrorDTO {
   message: string;
 }
 
-export type QuotaBucket = "generation" | "grading" | "deck_review" | "pdf_page_limit";
+export type QuotaBucket = "generation" | "grading" | "deck_review" | "pdf_page_limit" | "generated_card_limit";
 
 export interface QuotaBucketDTO {
   bucket: QuotaBucket;
@@ -146,6 +147,7 @@ export interface QuotaBucketDTO {
   defaultLimit: number;
   overridden: boolean;
   scope: "daily" | "per_upload";
+  usageLabel: string;
 }
 
 export interface AdminUserQuotaDTO {

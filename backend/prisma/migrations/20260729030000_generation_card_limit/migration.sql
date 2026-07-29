@@ -1,0 +1,2 @@
+ALTER TABLE "generation_jobs"
+ADD COLUMN "cardLimit" INTEGER NOT NULL DEFAULT 25;

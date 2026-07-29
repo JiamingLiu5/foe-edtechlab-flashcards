@@ -28,6 +28,7 @@ if (usingGemini) {
 export async function generateCardsFromText(params: {
   slideText: string;
   filename: string;
+  cardLimit: number;
   styleReferenceCards: { front: string; back: string }[];
 }): Promise<GeneratedCard[]> {
   return withRetry(async () => {

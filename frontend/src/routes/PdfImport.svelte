@@ -15,6 +15,7 @@
   let back = "";
   let tags = "";
   let bulkText = "";
+  let requestedCardCount = 25;
 
   function selectMode(nextMode: typeof mode) {
     mode = nextMode;
@@ -74,7 +75,7 @@
     }
     uploading = true;
     try {
-      const { job } = await api.uploadPdf(deckId, file);
+      const { job } = await api.uploadPdf(deckId, file, requestedCardCount);
       navigate(`/decks/${deckId}/jobs/${job.id}/review`);
     } catch (e) {
       error = e instanceof ApiError ? e.message : "Upload failed.";
@@ -94,7 +95,7 @@
     error = "";
     uploading = true;
     try {
-      const { job } = await api.importUrl(deckId, url.trim());
+      const { job } = await api.importUrl(deckId, url.trim(), requestedCardCount);
       navigate(`/decks/${deckId}/jobs/${job.id}/review`);
     } catch (e) {
       error = e instanceof ApiError ? e.message : "Import failed.";
@@ -136,6 +137,12 @@
 {:else if mode === "pdf"}
   <p class="muted">Upload lecture slides — we transcribe them and draft cards grounded in the source text, each citing the slide it came from. You'll review every card before it's added.</p>
 
+  <label class="card-count">
+    <span>Cards to draft</span>
+    <input type="number" min="1" step="1" bind:value={requestedCardCount} disabled={uploading} />
+    <small>Your administrator may set a maximum.</small>
+  </label>
+
   <div
     class="dropzone card-surface"
     class:drag={dragOver}
@@ -168,6 +175,10 @@
 
   <form class="url-form card-surface" on:submit|preventDefault={submitUrl}>
     <input type="url" placeholder="https://example.com/lecture-notes" bind:value={url} disabled={uploading} required />
+    <label class="card-count compact">
+      <span>Cards to draft</span>
+      <input type="number" min="1" step="1" bind:value={requestedCardCount} disabled={uploading} />
+    </label>
     <button class="btn btn-primary" type="submit" disabled={uploading || !url.trim()}>
       {uploading ? "Importing…" : "Draft cards"}
     </button>
@@ -200,6 +211,11 @@
   .dropzone.drag { border-color: var(--accent); background: var(--surface-2); }
   .url-form { display: flex; gap: 0.6rem; padding: 1rem; margin-top: 1.5rem; }
   .url-form input { flex: 1; }
+  .card-count { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 1rem; width: fit-content; font-weight: 600; }
+  .card-count input { width: 7rem; }
+  .card-count small { color: var(--text-dim); font-size: 0.8rem; font-weight: 400; }
+  .card-count.compact { margin: 0; min-width: 7rem; }
+  .card-count.compact span { font-size: 0.8rem; }
   .manual-form { display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; }
   .manual-form textarea { width: 100%; }
   .manual-form .btn { align-self: flex-start; }
