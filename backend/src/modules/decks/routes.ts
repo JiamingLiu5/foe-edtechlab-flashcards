@@ -1,7 +1,8 @@
+import fs from "node:fs/promises";
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../db.js";
 import { requireUser } from "../auth/plugin.js";
-import type { DeckSummaryDTO } from "@flashcards/shared";
+import type { DeckSourceDTO, DeckSummaryDTO } from "@flashcards/shared";
 
 export async function listDeckSummariesForOwner(ownerId: string): Promise<DeckSummaryDTO[]> {
   const decks = await prisma.deck.findMany({
@@ -74,10 +75,54 @@ export async function deckRoutes(app: FastifyInstance) {
     const user = requireUser(req, reply);
     if (!user) return;
 
-    const deck = await prisma.deck.findFirst({ where: { id: req.params.id, ownerId: user.userId } });
+    const deck = await prisma.deck.findFirst({
+      where: { id: req.params.id, ownerId: user.userId },
+      include: { sources: { select: { storedPath: true } } },
+    });
     if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
 
     await prisma.deck.delete({ where: { id: deck.id } });
+    // The database cascades the deck's cards, jobs, and source rows; their retained
+    // PDF files live outside the database, so remove them separately.
+    await Promise.all(deck.sources.map((s) => (s.storedPath ? fs.unlink(s.storedPath).catch(() => {}) : undefined)));
+    return reply.send({ ok: true });
+  });
+
+  app.get<{ Params: { id: string } }>("/api/decks/:id/sources", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+
+    const deck = await prisma.deck.findFirst({ where: { id: req.params.id, ownerId: user.userId } });
+    if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
+
+    const sources = await prisma.deckSource.findMany({
+      where: { deckId: deck.id },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, sourceType: true, label: true, sourceUrl: true, createdAt: true },
+    });
+    const dtos: DeckSourceDTO[] = sources.map((s) => ({
+      id: s.id,
+      sourceType: s.sourceType,
+      label: s.label,
+      sourceUrl: s.sourceUrl,
+      createdAt: s.createdAt.toISOString(),
+    }));
+    return reply.send({ sources: dtos });
+  });
+
+  app.delete<{ Params: { id: string; sourceId: string } }>("/api/decks/:id/sources/:sourceId", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+
+    const deck = await prisma.deck.findFirst({ where: { id: req.params.id, ownerId: user.userId } });
+    if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
+
+    const source = await prisma.deckSource.findFirst({ where: { id: req.params.sourceId, deckId: deck.id } });
+    if (!source) return reply.code(404).send({ error: "not_found", message: "Source not found." });
+
+    await prisma.deckSource.delete({ where: { id: source.id } });
+    if (source.storedPath) await fs.unlink(source.storedPath).catch(() => {});
+
     return reply.send({ ok: true });
   });
 }

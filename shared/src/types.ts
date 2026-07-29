@@ -31,6 +31,15 @@ export interface DeckSummaryDTO {
   createdAt: string;
 }
 
+/** A retained PDF/URL the deck was built from — used to ground later AI review. */
+export interface DeckSourceDTO {
+  id: string;
+  sourceType: GenerationSourceType;
+  label: string;
+  sourceUrl: string | null;
+  createdAt: string;
+}
+
 export interface CardDTO {
   id: string;
   deckId: string;

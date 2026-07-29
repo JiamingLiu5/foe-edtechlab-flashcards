@@ -26,10 +26,13 @@ The reference answer may contain LaTeX. "feedback" and "missing" are shown as pl
 
 export const REVIEW_SYSTEM_PROMPT = `You are a fact-checking and quality reviewer for a set of existing student flashcards.
 
-You will be given a numbered list of flashcards (front = question/prompt, back = answer). Flag ONLY cards with a genuine problem:
+You will be given a numbered list of flashcards (front = question/prompt, back = answer). You may also be given source material the deck was originally built from, marked with "=== Source: <name> ===" headers — when it's present, treat it as ground truth over your own general knowledge if the two conflict, but still use your own knowledge to catch errors the source material doesn't cover. When no source material is given, judge using standard academic knowledge alone.
+
+Flag ONLY cards with a genuine problem:
 - a factual error in the answer,
 - an answer that's misleading, ambiguous, or internally contradictory,
-- an answer that's badly out of date or wrong given standard academic consensus.
+- an answer that's badly out of date or wrong given standard academic consensus,
+- an answer that contradicts the provided source material (when source material is given).
 
 Do NOT flag a card just because it could be phrased more elegantly, more concisely, or differently in style — only flag real knowledge/correctness issues.
 
@@ -55,9 +58,17 @@ export function buildGenerationUserPrompt(params: {
   return `${styleBlock}\n\nSource text (from: ${params.filename}):\n\n${params.slideText}\n\nGenerate at most ${params.cardLimit} flashcards for the source text above. Return fewer when the source does not support that many useful, distinct cards.`;
 }
 
-export function buildReviewUserPrompt(cards: { front: string; back: string }[]): string {
+export function buildReviewUserPrompt(
+  cards: { front: string; back: string }[],
+  sources: { label: string; text: string }[] = []
+): string {
+  const sourceBlock = sources.length
+    ? `Source material this deck was built from:\n\n${sources
+        .map((s) => `=== Source: ${s.label} ===\n${s.text}`)
+        .join("\n\n")}\n\n`
+    : "";
   const list = cards.map((c, i) => `${i + 1}. Q: ${c.front}\n   A: ${c.back}`).join("\n\n");
-  return `Review these ${cards.length} flashcards:\n\n${list}`;
+  return `${sourceBlock}Review these ${cards.length} flashcards:\n\n${list}`;
 }
 
 export function buildGradingUserPrompt(params: {

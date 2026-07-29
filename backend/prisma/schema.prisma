@@ -66,8 +66,28 @@ model Deck {
 
   cards           Card[]
   generationJobs  GenerationJob[]
+  sources         DeckSource[]
 
   @@map("decks")
+}
+
+/// A PDF or URL the deck was built from, retained (not just its drafted cards) so a later
+/// AI review can fact-check cards against the original material instead of judging in isolation.
+model DeckSource {
+  id            String               @id @default(uuid())
+  deckId        String
+  deck          Deck                 @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  sourceType    GenerationSourceType
+  /// Filename for a PDF, or the page title (falling back to the URL) for a URL source.
+  label         String
+  sourceUrl     String?
+  /// Permanent on-disk path for a retained PDF; null for URL sources (no file to keep).
+  storedPath    String?
+  extractedText String
+  createdAt     DateTime             @default(now())
+
+  @@map("deck_sources")
+  @@index([deckId])
 }
 
 model Card {

@@ -75,11 +75,14 @@ export async function generateCardsFromText(params: {
  * Fallback for deck-knowledge review when no Anthropic API key is configured —
  * same prompt/parsing contract as the Claude path in lib/claude.ts.
  */
-export async function reviewCards(cards: { id: string; front: string; back: string }[]): Promise<ReviewFlag[]> {
+export async function reviewCards(
+  cards: { id: string; front: string; back: string }[],
+  sources: { label: string; text: string }[] = []
+): Promise<ReviewFlag[]> {
   const response = await genai.models.generateContent({
     model: env.geminiModelGeneration,
     config: { systemInstruction: REVIEW_SYSTEM_PROMPT },
-    contents: [{ role: "user", parts: [{ text: buildReviewUserPrompt(cards) }] }],
+    contents: [{ role: "user", parts: [{ text: buildReviewUserPrompt(cards, sources) }] }],
   });
 
   return parseReviewFlags(response.text ?? "", "Gemini", cards);

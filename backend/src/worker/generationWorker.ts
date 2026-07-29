@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
+import path from "node:path";
+import crypto from "node:crypto";
 import { UnrecoverableError, Worker, type Job } from "bullmq";
 import { redis } from "../redis.js";
 import { prisma } from "../db.js";
+import { env } from "../env.js";
 import { generateCardsFromText, reviewCards } from "../lib/claude.js";
 import { extractPdfText } from "../lib/gemini.js";
 import { isRetryableAiError } from "../lib/retry.js";
@@ -14,6 +17,45 @@ const REVIEW_BATCH_SIZE = 20;
 /** Maps a job kind back onto the quota bucket that was reserved for it when the job was created. */
 function quotaBucketForJob(kind: string): string {
   return kind === "review" ? "deck_review" : "generation";
+}
+
+/**
+ * Retains the successfully-extracted source material as a DeckSource, independent of whether
+ * card drafting from it later succeeds — a later AI review can ground itself in it either way.
+ * For PDFs, the temp upload is moved to a permanent location alongside it.
+ */
+async function persistDeckSource(
+  job: { deckId: string; sourceFilename: string; sourceType: string; sourceUrl: string | null; uploadPath: string | null },
+  sourceText: string,
+  sourceTitle?: string
+): Promise<void> {
+  if (job.sourceType === "url") {
+    await prisma.deckSource.create({
+      data: {
+        deckId: job.deckId,
+        sourceType: "url",
+        label: sourceTitle || job.sourceUrl || job.sourceFilename,
+        sourceUrl: job.sourceUrl,
+        extractedText: sourceText,
+      },
+    });
+    return;
+  }
+
+  const sourcesDir = path.join(env.uploadDir, "sources");
+  await fs.mkdir(sourcesDir, { recursive: true });
+  const storedPath = path.join(sourcesDir, `${crypto.randomUUID()}.pdf`);
+  await fs.rename(job.uploadPath!, storedPath);
+
+  await prisma.deckSource.create({
+    data: {
+      deckId: job.deckId,
+      sourceType: "pdf",
+      label: job.sourceFilename,
+      storedPath,
+      extractedText: sourceText,
+    },
+  });
 }
 
 async function processImportJob(job: {
@@ -29,13 +71,20 @@ async function processImportJob(job: {
 }) {
   await prisma.generationJob.update({ where: { id: job.id }, data: { status: "extracting" } });
 
-  const sourceText =
-    job.sourceType === "url"
-      ? (await extractUrlText(job.sourceUrl!)).text
-      : await extractPdfText({
-          pdfBase64: (await fs.readFile(job.uploadPath!)).toString("base64"),
-          filename: job.sourceFilename,
-        });
+  let sourceText: string;
+  let sourceTitle: string | undefined;
+  if (job.sourceType === "url") {
+    const extracted = await extractUrlText(job.sourceUrl!);
+    sourceText = extracted.text;
+    sourceTitle = extracted.title;
+  } else {
+    sourceText = await extractPdfText({
+      pdfBase64: (await fs.readFile(job.uploadPath!)).toString("base64"),
+      filename: job.sourceFilename,
+    });
+  }
+
+  await persistDeckSource(job, sourceText, sourceTitle);
 
   const styleReferenceCards = await prisma.card.findMany({
     where: { deckId: job.deckId },
@@ -82,16 +131,26 @@ async function processImportJob(job: {
 async function processReviewJob(job: { id: string; deckId: string }) {
   await prisma.generationJob.update({ where: { id: job.id }, data: { status: "generating" } });
 
-  const cards = await prisma.card.findMany({
-    where: { deckId: job.deckId },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, front: true, back: true },
-  });
+  const [cards, deckSources] = await Promise.all([
+    prisma.card.findMany({
+      where: { deckId: job.deckId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, front: true, back: true },
+    }),
+    prisma.deckSource.findMany({
+      where: { deckId: job.deckId },
+      orderBy: { createdAt: "asc" },
+      select: { label: true, extractedText: true },
+    }),
+  ]);
+  // Older decks (built before sources were retained, or from manually-added cards) simply
+  // have no rows here — reviewCards/buildReviewUserPrompt fall back to ungrounded judgment.
+  const sources = deckSources.map((s) => ({ label: s.label, text: s.extractedText }));
 
   const flags = [];
   for (let i = 0; i < cards.length; i += REVIEW_BATCH_SIZE) {
     const batch = cards.slice(i, i + REVIEW_BATCH_SIZE);
-    flags.push(...(await reviewCards(batch)));
+    flags.push(...(await reviewCards(batch, sources)));
   }
 
   await prisma.$transaction([

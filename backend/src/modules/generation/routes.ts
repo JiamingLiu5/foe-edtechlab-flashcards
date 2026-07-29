@@ -280,8 +280,6 @@ export async function generationRoutes(app: FastifyInstance) {
         return resulting;
       });
 
-      await maybeFinalizeJobAndCleanup(draft.jobId);
-
       return reply.send({ card });
     }
   );
@@ -304,19 +302,8 @@ export async function generationRoutes(app: FastifyInstance) {
       }
 
       await prisma.aiDraft.update({ where: { id: draft.id }, data: { status: "discarded" } });
-      await maybeFinalizeJobAndCleanup(draft.jobId);
 
       return reply.send({ ok: true });
     }
   );
-}
-
-/** Deletes the source PDF once every draft in the job has been accepted/discarded (§8: no reason to retain slides after cards are drawn). */
-async function maybeFinalizeJobAndCleanup(jobId: string) {
-  const job = await prisma.generationJob.findUnique({ where: { id: jobId }, include: { drafts: true } });
-  if (!job) return;
-  const allResolved = job.drafts.length > 0 && job.drafts.every((d) => d.status !== "pending");
-  if (allResolved && job.uploadPath) {
-    await fs.unlink(job.uploadPath).catch(() => {});
-  }
 }

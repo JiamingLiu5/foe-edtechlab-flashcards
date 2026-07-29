@@ -52,17 +52,20 @@ export async function generateCardsFromText(params: {
   });
 }
 
-export async function reviewCards(cards: { id: string; front: string; back: string }[]): Promise<ReviewFlag[]> {
+export async function reviewCards(
+  cards: { id: string; front: string; back: string }[],
+  sources: { label: string; text: string }[] = []
+): Promise<ReviewFlag[]> {
   return withRetry(async () => {
     if (usingGemini) {
-      return gemini.reviewCards(cards);
+      return gemini.reviewCards(cards, sources);
     }
 
     const message = await anthropic.messages.create({
       model: env.anthropicModelGeneration,
       max_tokens: 4096,
       system: REVIEW_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildReviewUserPrompt(cards) }],
+      messages: [{ role: "user", content: buildReviewUserPrompt(cards, sources) }],
     });
 
     const text = message.content

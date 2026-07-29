@@ -3,6 +3,7 @@ import type {
   AdminUserQuotaDTO,
   AiDraftDTO,
   CardDTO,
+  DeckSourceDTO,
   DeckSummaryDTO,
   DueCardDTO,
   GenerationJobDTO,
@@ -72,6 +73,10 @@ export const api = {
   createDeck: (name: string) => request<{ deck: DeckSummaryDTO }>("/decks", { method: "POST", body: JSON.stringify({ name }) }),
   deleteDeck: (id: string) => request<{ ok: true }>(`/decks/${id}`, { method: "DELETE" }),
 
+  listSources: (deckId: string) => request<{ sources: DeckSourceDTO[] }>(`/decks/${deckId}/sources`),
+  deleteSource: (deckId: string, sourceId: string) =>
+    request<{ ok: true }>(`/decks/${deckId}/sources/${sourceId}`, { method: "DELETE" }),
+
   listCards: (deckId: string) => request<{ cards: CardDTO[] }>(`/decks/${deckId}/cards`),
   createCard: (deckId: string, front: string, back: string, tags: string[] = []) =>
     request<{ cards: CardDTO[] }>(`/decks/${deckId}/cards`, { method: "POST", body: JSON.stringify({ front, back, tags }) }),
@@ -131,4 +136,4 @@ export const api = {
   exportAnkiUrl: (deckId: string) => `/api/decks/${deckId}/export/anki`,
 };
 
-export type { AdminUserDTO, AiDraftDTO, CardDTO, DeckSummaryDTO, GenerationJobDTO, UserDTO };
+export type { AdminUserDTO, AiDraftDTO, CardDTO, DeckSourceDTO, DeckSummaryDTO, GenerationJobDTO, UserDTO };

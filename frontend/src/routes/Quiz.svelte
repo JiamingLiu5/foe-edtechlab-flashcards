@@ -190,7 +190,7 @@
       <textarea id="fill-answer" rows="4" bind:value={typedAnswer} disabled={fillChecked || checking} placeholder="Type your answer…"></textarea>
       {#if fillError}<p class="error">{fillError}</p>{/if}
       {#if fillChecked && fillResult}
-        <div class:correct-answer={fillResult.score >= 70} class:answer-feedback>
+        <div class="answer-feedback" class:correct-answer={fillResult.score >= 70}>
           <strong>{fillResult.score >= 70 ? "Good answer" : "Keep working on it"} · {fillResult.score}%</strong>
           <p>{fillResult.feedback}</p>
           <p>Correct answer: <Katex text={q.back} /></p>

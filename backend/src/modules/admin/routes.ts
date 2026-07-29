@@ -123,7 +123,12 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const targetUser = await prisma.user.findUnique({
       where: { id: req.params.id },
-      select: { id: true, role: true, jobsCreated: { select: { uploadPath: true } } },
+      select: {
+        id: true,
+        role: true,
+        jobsCreated: { select: { uploadPath: true } },
+        decks: { select: { sources: { select: { storedPath: true } } } },
+      },
     });
     if (!targetUser) return reply.code(404).send({ error: "not_found", message: "User not found." });
 
@@ -140,9 +145,13 @@ export async function adminRoutes(app: FastifyInstance) {
     const { count: deletedCount } = await prisma.user.deleteMany({ where: { id: targetUser.id } });
     if (deletedCount === 0) return reply.code(404).send({ error: "not_found", message: "User not found." });
 
-    // The database cascades the user's decks, cards, reviews, jobs, and drafts.
-    // Uploaded PDFs live outside the database, so remove their files separately.
-    await Promise.all(targetUser.jobsCreated.map(({ uploadPath }) => (uploadPath ? fs.unlink(uploadPath).catch(() => {}) : undefined)));
+    // The database cascades the user's decks, cards, reviews, jobs, drafts, and sources.
+    // Uploaded PDFs and retained source files live outside the database, so remove them separately.
+    const filePaths = [
+      ...targetUser.jobsCreated.map((j) => j.uploadPath),
+      ...targetUser.decks.flatMap((d) => d.sources.map((s) => s.storedPath)),
+    ].filter((p): p is string => !!p);
+    await Promise.all(filePaths.map((p) => fs.unlink(p).catch(() => {})));
 
     return reply.send({ ok: true });
   });
