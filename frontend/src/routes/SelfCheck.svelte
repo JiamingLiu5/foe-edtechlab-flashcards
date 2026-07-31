@@ -69,7 +69,7 @@
 {:else}
   {@const card = cards[index]}
   <p class="muted small">Card {index + 1} of {cards.length}</p>
-  <div class="card-surface question">
+  <div class="card-surface question" data-tour-target="self-check-answer">
     <div class="front"><Katex text={card.front} /></div>
 
     {#if !result}

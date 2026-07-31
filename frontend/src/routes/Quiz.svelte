@@ -199,7 +199,7 @@
 {#if !mode}
   <h1>Choose your quiz</h1>
   <p class="muted">Choose a format, then set up the questions before you begin.</p>
-  <div class="mode-grid">
+  <div class="mode-grid" data-tour-target="quiz-format">
     <button class="card-surface mode-card" on:click={() => navigate(`/decks/${deckId}/quiz/mcq`)}>
       <strong>Multiple choice</strong>
       <span class="muted">Choose the correct answer from four options.</span>

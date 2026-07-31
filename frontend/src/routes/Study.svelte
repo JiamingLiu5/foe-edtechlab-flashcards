@@ -62,7 +62,7 @@
 {#if card === undefined}
   <p class="muted">Loading…</p>
 {:else if done}
-  <div class="card-surface empty">
+  <div class="card-surface empty" data-tour-target="study-card">
     <p>No cards due today 🎉</p>
     {#if nextDueAt}<p class="muted">Next review: {new Date(nextDueAt).toLocaleString()}</p>{/if}
     <p class="muted">Reviewed {reviewedCount} card{reviewedCount === 1 ? "" : "s"} this session.</p>
@@ -70,6 +70,7 @@
 {:else if card}
   <div
     class="card-surface flashcard"
+    data-tour-target="study-card"
     on:click={() => (flipped = !flipped)}
     on:keydown={(event) => {
       if (event.key === "Enter" || event.key === " ") flipped = !flipped;

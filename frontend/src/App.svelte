@@ -20,7 +20,7 @@
   import BeginnerGuide from "./routes/BeginnerGuide.svelte";
   import OnboardingTour from "./lib/OnboardingTour.svelte";
 
-  type TourIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  type TourIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
   const TOUR_STORAGE_KEY = "flashcards:onboarding-complete";
   const tourSteps = [
@@ -28,10 +28,13 @@
     { target: "add-cards", title: "Add material to the deck", description: "Select Add cards to write cards yourself or turn your study material into draft cards.", continueLabel: "" },
     { target: "choose-source", title: "Choose a source", description: "Choose Create a card, Paste cards, From PDF, or From link. Use the real controls, then continue when you are ready.", continueLabel: "I chose a source" },
     { target: "generate-cards", title: "Create or generate cards", description: "Add a manual card, or set a maximum and draft cards with AI. AI drafts are always reviewed before entering your deck.", continueLabel: "I've added or drafted cards" },
-    { target: "review-drafts", title: "Review each draft", description: "Edit, accept, or discard AI drafts. Once you have reviewed them, continue to the practice modes.", continueLabel: "I've reviewed my cards" },
-    { target: "self-check-mode", title: "Try Self-check", description: "Use Self-check to write an answer in your own words and receive AI feedback, missing points, and the reference answer.", continueLabel: "Next: Study" },
-    { target: "study-mode", title: "Study with spaced repetition", description: "Flip a card to reveal the answer, then choose Again, Hard, Good, or Easy to set when it returns.", continueLabel: "Next: Quiz" },
-    { target: "quiz-mode", title: "Test yourself with a quiz", description: "Choose multiple choice, fill-in-the-blank, or a mixed quiz. Results appear together after you finish.", continueLabel: "Finish guide" },
+    { target: "review-drafts", title: "Review each draft", description: "Check the question and answer against your notes. Use Edit to correct wording, Accept to add it to the deck, or Discard to leave it out.", continueLabel: "I've reviewed my cards" },
+    { target: "self-check-mode", title: "Open Self-check", description: "Select Self-check to practise explaining an answer without prompts or answer options. The guide will continue on the Self-check screen.", continueLabel: "" },
+    { target: "self-check-answer", title: "Write and check your answer", description: "Read the question, type a complete answer in the box, then select Submit. AI gives a score, feedback, missing points, and the reference answer before you continue.", continueLabel: "Next: Study" },
+    { target: "study-mode", title: "Open Study", description: "Select Study to practise with spaced repetition. The guide will show you the card controls on the next screen.", continueLabel: "" },
+    { target: "study-card", title: "Flip and schedule the card", description: "Click the card to reveal its answer. Then choose Again if you missed it, or Hard, Good, or Easy to decide how soon it should return.", continueLabel: "Next: Quiz" },
+    { target: "quiz-mode", title: "Open Quiz", description: "Select Quiz to test recall in a set of questions. The guide will show the available formats next.", continueLabel: "" },
+    { target: "quiz-format", title: "Choose a quiz format", description: "Multiple choice gives four options. Fill-in-the-blank collects written answers and grades each one before the final results. Mix combines both formats. Choose a format, configure the question count, then start.", continueLabel: "Finish guide" },
   ];
 
   let tourIndex: TourIndex | null = null;
@@ -66,6 +69,9 @@
   $: if (tourIndex === 0 && deckIdParams) tourIndex = 1;
   $: if (tourIndex === 1 && addCardsParams) tourIndex = 2;
   $: if (tourIndex === 3 && reviewParams) tourIndex = 4;
+  $: if (tourIndex === 5 && selfCheckParams) tourIndex = 6;
+  $: if (tourIndex === 7 && studyParams) tourIndex = 8;
+  $: if (tourIndex === 9 && (quizParams || quizModeParams)) tourIndex = 10;
   $: if (deckIdParams?.id) tourDeckId = deckIdParams.id;
   $: if (addCardsParams?.id) tourDeckId = addCardsParams.id;
   $: if (reviewParams?.id) tourDeckId = reviewParams.id;
@@ -101,13 +107,13 @@
     } else if (tourIndex === 4) {
       tourIndex = 5;
       if (tourDeckId) navigate(`/decks/${tourDeckId}`);
-    } else if (tourIndex === 5) {
-      tourIndex = 6;
-      if (tourDeckId) navigate(`/decks/${tourDeckId}`);
     } else if (tourIndex === 6) {
       tourIndex = 7;
       if (tourDeckId) navigate(`/decks/${tourDeckId}`);
-    } else if (tourIndex === 7) {
+    } else if (tourIndex === 8) {
+      tourIndex = 9;
+      if (tourDeckId) navigate(`/decks/${tourDeckId}`);
+    } else if (tourIndex === 10) {
       finishTour();
     }
   }
