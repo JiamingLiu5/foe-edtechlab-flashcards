@@ -17,7 +17,7 @@
   let back = "";
   let tags = "";
   let pastedText = "";
-  let requestedCardCount = 25;
+  let requestedCardCount = 12;
   let quizPromptCard: CardDTO | null = null;
   let quizPromptSaving = false;
   let quizPromptError = "";

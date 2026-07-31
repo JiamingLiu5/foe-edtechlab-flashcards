@@ -41,7 +41,7 @@ function toDTO(job: Awaited<ReturnType<typeof loadJob>>): GenerationJobDTO {
 }
 
 function parseCardLimit(value: unknown, maximum: number): number | null {
-  const requested = value === undefined || value === "" ? Math.min(25, maximum) : Number(value);
+  const requested = value === undefined || value === "" ? Math.min(12, maximum) : Number(value);
   if (!Number.isInteger(requested) || requested < 1 || requested > maximum) return null;
   return requested;
 }
