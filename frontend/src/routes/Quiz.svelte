@@ -7,6 +7,7 @@
 
   export let deckId: string;
   export let mode: "mcq" | "fill" | "mix" | undefined = undefined;
+  export let onTourStage: (stage: "format" | QuizStage) => void = () => {};
 
   type McqQuestion = { kind: "mcq"; cardId: string; front: string; back: string; options: string[]; answer: string; difficulty: CardDifficulty; points: number };
   type FillQuestion = { kind: "fill"; cardId: string; front: string; back: string; options: string[]; answer: string; difficulty: CardDifficulty; points: number };
@@ -48,6 +49,7 @@
   $: minutesLabel = remainingSeconds === null
     ? ""
     : `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`;
+  $: onTourStage(mode ? stage : "format");
 
   function shuffle<T>(items: T[]): T[] {
     const result = [...items];
@@ -220,7 +222,7 @@
   </div>
 
   {#if stage === "setup"}
-    <form class="card-surface setup" on:submit|preventDefault={prepareQuiz}>
+    <form class="card-surface setup" data-tour-target="quiz-setup" on:submit|preventDefault={prepareQuiz}>
       <h2>Quiz configuration</h2>
       <label>
         <span>Number of questions</span>
@@ -279,12 +281,12 @@
         </li>
       {/each}
     </ol>
-    <div class="preview-actions">
+    <div class="preview-actions" data-tour-target="quiz-preview-actions">
       <button class="btn" on:click={restartSetup}>Back to setup</button>
       <button class="btn btn-primary" on:click={startQuiz}>Start quiz</button>
     </div>
   {:else if stage === "done" || quizFinished}
-    <div class="card-surface done">
+    <div class="card-surface done" data-tour-target="quiz-results">
       <p>Points: {Number(pointsEarned.toFixed(2))} / {totalPoints}</p>
       {#if fillAnswered}<p>Average AI score: {Math.round(fillScore / fillAnswered)}%</p>{/if}
       <h2>Results</h2>
@@ -318,7 +320,7 @@
       <p class="muted small">Question {index + 1} of {questionCount} · {q.points} point{q.points === 1 ? "" : "s"}</p>
       {#if remainingSeconds !== null}<strong class="timer">{minutesLabel}</strong>{/if}
     </div>
-    <div class="card-surface question">
+    <div class="card-surface question" data-tour-target="quiz-question">
       <div class="front"><Katex text={q.front} /></div>
       <div class="options">
         {#each q.options as option}
@@ -340,7 +342,7 @@
       <p class="muted small">Question {index + 1} of {questionCount} · {q.points} point{q.points === 1 ? "" : "s"}</p>
       {#if remainingSeconds !== null}<strong class="timer">{minutesLabel}</strong>{/if}
     </div>
-    <form class="card-surface question" on:submit|preventDefault={submitFillAnswer}>
+    <form class="card-surface question" data-tour-target="quiz-question" on:submit|preventDefault={submitFillAnswer}>
       <div class="front"><Katex text={q.front} /></div>
       <label for="fill-answer" class="muted small">Your answer</label>
       <textarea id="fill-answer" rows="4" bind:value={typedAnswer} disabled={checking} placeholder="Type your answer…"></textarea>

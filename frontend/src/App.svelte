@@ -20,7 +20,7 @@
   import BeginnerGuide from "./routes/BeginnerGuide.svelte";
   import OnboardingTour from "./lib/OnboardingTour.svelte";
 
-  type TourIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+  type TourIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
 
   const TOUR_STORAGE_KEY = "flashcards:onboarding-complete";
   const tourSteps = [
@@ -32,9 +32,13 @@
     { target: "self-check-mode", title: "Open Self-check", description: "Select Self-check to practise explaining an answer without prompts or answer options. The guide will continue on the Self-check screen.", continueLabel: "" },
     { target: "self-check-answer", title: "Write and check your answer", description: "Read the question, type a complete answer in the box, then select Submit. AI gives a score, feedback, missing points, and the reference answer before you continue.", continueLabel: "Next: Study" },
     { target: "study-mode", title: "Open Study", description: "Select Study to practise with spaced repetition. The guide will show you the card controls on the next screen.", continueLabel: "" },
-    { target: "study-card", title: "Flip and schedule the card", description: "Click the card to reveal its answer. Then choose Again if you missed it, or Hard, Good, or Easy to decide how soon it should return.", continueLabel: "Next: Quiz" },
+    { target: "study-session", title: "Flip and schedule the card", description: "Click the card to reveal its answer. Then choose Again if you missed it, or Hard, Good, or Easy to decide how soon it should return.", continueLabel: "Next: Quiz" },
     { target: "quiz-mode", title: "Open Quiz", description: "Select Quiz to test recall in a set of questions. The guide will show the available formats next.", continueLabel: "" },
-    { target: "quiz-format", title: "Choose a quiz format", description: "Multiple choice gives four options. Fill-in-the-blank collects written answers and grades each one before the final results. Mix combines both formats. Choose a format, configure the question count, then start.", continueLabel: "Finish guide" },
+    { target: "quiz-format", title: "Choose a quiz format", description: "Multiple choice gives four options. Fill-in-the-blank collects written answers and grades each one before final results. Mix combines both formats. Select the format you want to practise.", continueLabel: "" },
+    { target: "quiz-setup", title: "Configure your quiz", description: "Set the total number of questions, filter by difficulty, reserve any hard questions, and optionally add a timer. Leave Preview ticked to check the generated questions and adjust their points before starting.", continueLabel: "" },
+    { target: "quiz-preview-actions", title: "Review questions and points", description: "Read the generated questions above and adjust each point value if needed. Select Start quiz when the set is ready, or Back to setup to change the filters.", continueLabel: "" },
+    { target: "quiz-question", title: "Answer every question", description: "Choose one option for multiple-choice or write and save an answer for fill-in-the-blank. Your correctness and AI feedback stay hidden until the complete quiz is finished.", continueLabel: "" },
+    { target: "quiz-results", title: "Review your results", description: "See your total points, every answer, the correct answer, and AI feedback for written responses. Use Configure another quiz to practise again with a new set.", continueLabel: "Finish guide" },
   ];
 
   let tourIndex: TourIndex | null = null;
@@ -71,7 +75,7 @@
   $: if (tourIndex === 3 && reviewParams) tourIndex = 4;
   $: if (tourIndex === 5 && selfCheckParams) tourIndex = 6;
   $: if (tourIndex === 7 && studyParams) tourIndex = 8;
-  $: if (tourIndex === 9 && (quizParams || quizModeParams)) tourIndex = 10;
+  $: if (tourIndex === 9 && quizParams) tourIndex = 10;
   $: if (deckIdParams?.id) tourDeckId = deckIdParams.id;
   $: if (addCardsParams?.id) tourDeckId = addCardsParams.id;
   $: if (reviewParams?.id) tourDeckId = reviewParams.id;
@@ -113,8 +117,20 @@
     } else if (tourIndex === 8) {
       tourIndex = 9;
       if (tourDeckId) navigate(`/decks/${tourDeckId}`);
-    } else if (tourIndex === 10) {
+    } else if (tourIndex === 14) {
       finishTour();
+    }
+  }
+
+  function handleQuizTourStage(stage: "format" | "setup" | "preview" | "quiz" | "done") {
+    if (tourIndex === 10 && stage === "setup") {
+      tourIndex = 11;
+    } else if (tourIndex === 11 && stage === "preview") {
+      tourIndex = 12;
+    } else if ((tourIndex === 11 || tourIndex === 12) && stage === "quiz") {
+      tourIndex = 13;
+    } else if ((tourIndex === 11 || tourIndex === 12 || tourIndex === 13) && stage === "done") {
+      tourIndex = 14;
     }
   }
 </script>
@@ -150,9 +166,9 @@
       {:else if selfCheckParams}
         <SelfCheck deckId={selfCheckParams.id} />
       {:else if quizModeParams && (quizModeParams.mode === "mcq" || quizModeParams.mode === "fill" || quizModeParams.mode === "mix")}
-        <Quiz deckId={quizModeParams.id} mode={quizModeParams.mode} />
+        <Quiz deckId={quizModeParams.id} mode={quizModeParams.mode} onTourStage={handleQuizTourStage} />
       {:else if quizParams}
-        <Quiz deckId={quizParams.id} />
+        <Quiz deckId={quizParams.id} onTourStage={handleQuizTourStage} />
       {:else if studyParams}
         <Study deckId={studyParams.id} />
       {:else if reviewParams}

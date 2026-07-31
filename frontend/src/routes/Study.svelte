@@ -68,29 +68,30 @@
     <p class="muted">Reviewed {reviewedCount} card{reviewedCount === 1 ? "" : "s"} this session.</p>
   </div>
 {:else if card}
-  <div
-    class="card-surface flashcard"
-    data-tour-target="study-card"
-    on:click={() => (flipped = !flipped)}
-    on:keydown={(event) => {
-      if (event.key === "Enter" || event.key === " ") flipped = !flipped;
-    }}
-    role="button"
-    tabindex="0"
-  >
-    <div class="face"><Katex text={flipped ? card.back : card.front} /></div>
-    <p class="muted small hint">{flipped ? "" : "Click to reveal answer"}</p>
-  </div>
-
-  {#if flipped}
-    <div class="grade-row">
-      <button class="btn btn-danger" on:click={() => review("again")}>Again <small>{formatMinutes(intervalPreviews.again)}</small></button>
-      <button class="btn" on:click={() => review("hard")}>Hard <small>{formatMinutes(intervalPreviews.hard)}</small></button>
-      <button class="btn btn-primary" on:click={() => review("good")}>Good <small>{formatMinutes(intervalPreviews.good)}</small></button>
-      <button class="btn" on:click={() => review("easy")}>Easy <small>{formatMinutes(intervalPreviews.easy)}</small></button>
-      <button class="btn all-done" disabled={retiring} on:click={retire}>All done <small>never again</small></button>
+  <div class="study-session" data-tour-target="study-session">
+    <div
+      class="card-surface flashcard"
+      on:click={() => (flipped = !flipped)}
+      on:keydown={(event) => {
+        if (event.key === "Enter" || event.key === " ") flipped = !flipped;
+      }}
+      role="button"
+      tabindex="0"
+    >
+      <div class="face"><Katex text={flipped ? card.back : card.front} /></div>
+      <p class="muted small hint">{flipped ? "" : "Click to reveal answer"}</p>
     </div>
-  {/if}
+
+    {#if flipped}
+      <div class="grade-row">
+        <button class="btn btn-danger" on:click={() => review("again")}>Again <small>{formatMinutes(intervalPreviews.again)}</small></button>
+        <button class="btn" on:click={() => review("hard")}>Hard <small>{formatMinutes(intervalPreviews.hard)}</small></button>
+        <button class="btn btn-primary" on:click={() => review("good")}>Good <small>{formatMinutes(intervalPreviews.good)}</small></button>
+        <button class="btn" on:click={() => review("easy")}>Easy <small>{formatMinutes(intervalPreviews.easy)}</small></button>
+        <button class="btn all-done" disabled={retiring} on:click={retire}>All done <small>never again</small></button>
+      </div>
+    {/if}
+  </div>
 {/if}
 
 <style>

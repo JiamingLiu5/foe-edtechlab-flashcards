@@ -12,6 +12,7 @@
   let top = 24;
   let left = 24;
   let placement: "above" | "below" = "below";
+  let popover: HTMLElement | null = null;
   let foundTarget = false;
   let modalOpen = false;
   let refreshTimer: ReturnType<typeof setInterval> | undefined;
@@ -54,8 +55,13 @@
 
     const rect = highlighted.getBoundingClientRect();
     const tooltipWidth = Math.min(340, window.innerWidth - 32);
-    placement = rect.bottom + 210 > window.innerHeight ? "above" : "below";
-    top = placement === "below" ? rect.bottom + 16 : Math.max(16, rect.top - 194);
+    const tooltipHeight = popover?.offsetHeight ?? 300;
+    const spaceBelow = window.innerHeight - rect.bottom - 16;
+    const spaceAbove = rect.top - 16;
+    placement = spaceBelow >= tooltipHeight || spaceBelow >= spaceAbove ? "below" : "above";
+    top = placement === "below"
+      ? Math.min(rect.bottom + 16, window.innerHeight - tooltipHeight - 16)
+      : Math.max(16, rect.top - tooltipHeight - 16);
     left = Math.max(16, Math.min(window.innerWidth - tooltipWidth - 16, rect.left + rect.width / 2 - tooltipWidth / 2));
   }
 
@@ -78,6 +84,7 @@
 
 {#if !modalOpen}
   <aside
+    bind:this={popover}
     class="tour-popover"
     class:above={placement === "above"}
     class:waiting={!foundTarget}
