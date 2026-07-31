@@ -142,7 +142,7 @@
 </script>
 
 <button class="back" on:click={() => navigate(`/decks/${deckId}`)}>&larr; Back to deck</button>
-<h1>{isReview ? "AI deck review" : "AI review"}</h1>
+<h1>{isReview ? "AI deck review" : "AI generating"}</h1>
 
 {#if isReview && !sourcesLoading && sources.length > 0}
   <div class="sources card-surface">

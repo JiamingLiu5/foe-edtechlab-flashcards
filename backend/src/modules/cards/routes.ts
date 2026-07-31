@@ -1,6 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../db.js";
 import { requireUser } from "../auth/plugin.js";
+import type { CardDifficulty } from "@flashcards/shared";
+
+function isCardDifficulty(value: unknown): value is CardDifficulty {
+  return value === "easy" || value === "medium" || value === "hard";
+}
 
 async function assertDeckOwnership(deckId: string, userId: string) {
   return prisma.deck.findFirst({ where: { id: deckId, ownerId: userId } });
@@ -68,7 +73,7 @@ export async function cardRoutes(app: FastifyInstance) {
 
   app.patch<{
     Params: { id: string; cardId: string };
-    Body: { front?: string; back?: string; tags?: string[]; includeInQuiz?: boolean; retired?: boolean };
+    Body: { front?: string; back?: string; tags?: string[]; includeInQuiz?: boolean; retired?: boolean; difficulty?: CardDifficulty };
   }>("/api/decks/:id/cards/:cardId", async (req, reply) => {
     const user = requireUser(req, reply);
     if (!user) return;
@@ -89,6 +94,7 @@ export async function cardRoutes(app: FastifyInstance) {
           : card.tags,
         includeInQuiz: typeof req.body?.includeInQuiz === "boolean" ? req.body.includeInQuiz : card.includeInQuiz,
         retired: typeof req.body?.retired === "boolean" ? req.body.retired : card.retired,
+        difficulty: isCardDifficulty(req.body?.difficulty) ? req.body.difficulty : card.difficulty,
       },
     });
     return reply.send({ card: updated });

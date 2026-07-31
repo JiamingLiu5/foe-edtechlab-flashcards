@@ -86,7 +86,7 @@ export const api = {
   updateCard: (
     deckId: string,
     cardId: string,
-    card: { front?: string; back?: string; tags?: string[]; includeInQuiz?: boolean; retired?: boolean }
+    card: { front?: string; back?: string; tags?: string[]; includeInQuiz?: boolean; retired?: boolean; difficulty?: CardDifficulty }
   ) => request<{ card: CardDTO }>(`/decks/${deckId}/cards/${cardId}`, { method: "PATCH", body: JSON.stringify(card) }),
   deleteCard: (deckId: string, cardId: string) => request<{ ok: true }>(`/decks/${deckId}/cards/${cardId}`, { method: "DELETE" }),
 

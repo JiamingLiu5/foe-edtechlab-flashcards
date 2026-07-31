@@ -15,7 +15,9 @@
   let quotaLoading = true;
   let quotaError = "";
   let quotaBusy = "";
-  let overrideInputs: Record<string, string> = {};
+  // Svelte binds <input type="number"> values as numbers (or undefined while
+  // empty), so keep this state numeric instead of treating it as text.
+  let overrideInputs: Record<string, number | undefined> = {};
 
   async function load() {
     loading = true;
@@ -37,7 +39,7 @@
     try {
       const res = await api.adminGetUserQuota(userId);
       quotaBuckets = res.buckets;
-      overrideInputs = Object.fromEntries(res.buckets.map((b) => [b.bucket, String(b.limit)]));
+      overrideInputs = Object.fromEntries(res.buckets.map((b) => [b.bucket, b.limit]));
     } catch (e) {
       quotaError = e instanceof ApiError ? e.message : "Failed to load quota.";
     } finally {
@@ -59,8 +61,7 @@
   }
 
   async function saveOverride(bucket: QuotaBucket) {
-    const raw = overrideInputs[bucket]?.trim();
-    const dailyLimit = raw === "" || raw === undefined ? NaN : Number(raw);
+    const dailyLimit = overrideInputs[bucket];
     if (!Number.isInteger(dailyLimit) || dailyLimit < 0) {
       quotaError = "Enter a non-negative whole number.";
       return;

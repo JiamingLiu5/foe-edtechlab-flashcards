@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { CardDTO } from "@flashcards/shared";
+  import type { CardDTO, CardDifficulty } from "@flashcards/shared";
   import { api, ApiError } from "../lib/api";
   import { navigate } from "../lib/router";
   import Katex from "../lib/Math.svelte";
@@ -27,6 +27,8 @@
   const UNFINISHED_TAG = "unfinished";
   let memorizedSavingCardId = "";
   let memorizedError = "";
+  let difficultySavingCardId = "";
+  let difficultyError = "";
 
   $: allTags = [...new Set(cards.flatMap((card) => card.tags))].sort();
   $: visibleCards = cards.filter((card) => {
@@ -128,6 +130,21 @@
     }
   }
 
+  async function setDifficulty(card: CardDTO, difficulty: CardDifficulty) {
+    if (difficultySavingCardId || difficulty === card.difficulty) return;
+
+    difficultySavingCardId = card.id;
+    difficultyError = "";
+    try {
+      const { card: updatedCard } = await api.updateCard(deckId, card.id, { difficulty });
+      cards = cards.map((otherCard) => otherCard.id === updatedCard.id ? updatedCard : otherCard);
+    } catch (error) {
+      difficultyError = error instanceof ApiError ? error.message : "Couldn't update the card difficulty.";
+    } finally {
+      difficultySavingCardId = "";
+    }
+  }
+
   async function chooseQuizPreference(includeInQuiz: boolean) {
     if (!quizPromptCard || quizPromptSaving) return;
 
@@ -188,6 +205,7 @@
 
 {#if reviewError}<p class="error">{reviewError}</p>{/if}
 {#if memorizedError}<p class="error">{memorizedError}</p>{/if}
+{#if difficultyError}<p class="error">{difficultyError}</p>{/if}
 
 <div class="filters">
   <input type="search" placeholder="Search questions and answers…" bind:value={search} />
@@ -244,7 +262,18 @@
   <div class="card-meta">
     <span class="muted small">Card {cardIndex + 1} of {visibleCards.length}</span>
     {#if card.source && card.source !== "manual"}<span class="source muted small">{card.source}</span>{/if}
-    <span class="pill difficulty">{card.difficulty}</span>
+    <select
+      class="pill difficulty difficulty-control"
+      value={card.difficulty}
+      aria-label="Set card difficulty"
+      title="Set card difficulty"
+      disabled={difficultySavingCardId === card.id}
+      on:change={(event) => setDifficulty(card, (event.currentTarget as HTMLSelectElement).value as CardDifficulty)}
+    >
+      <option value="easy">Easy</option>
+      <option value="medium">Medium</option>
+      <option value="hard">Hard</option>
+    </select>
     {#if card.retired}<span class="pill retired">Retired from Study</span>{/if}
     {#if card.tags.length}<div class="tags">{#each card.tags as tag}<span>{tag}</span>{/each}</div>{/if}
     <button class="edit" on:click={() => startEdit(card)}>Edit card</button>
@@ -302,6 +331,8 @@
   .tags span { font-size: 0.72rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: var(--surface-2); color: var(--text-dim); }
   .pill.retired { font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--surface-2); color: var(--text-dim); font-weight: 600; }
   .pill.difficulty { font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--surface-2); color: var(--text-dim); font-weight: 600; text-transform: capitalize; }
+  select.difficulty-control { border: none; cursor: pointer; font: inherit; }
+  select.difficulty-control:disabled { cursor: wait; opacity: 0.65; }
   .viewer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; }
   .flashcard-wrap { position: relative; min-width: 0; }
   .flashcard {

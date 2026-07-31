@@ -136,7 +136,7 @@
   </form>
 {:else if mode === "paste"}
   <form class="manual-form card-surface" on:submit|preventDefault={generateFromPastedText}>
-    <p class="muted small">Paste study notes, lecture text, or other source material. AI will draft cards from it for you to review before adding them.</p>
+    <p class="muted small">Paste any amount of study notes, lecture text, or other source material. No special formatting is needed — AI will draft cards for you to review before adding them.</p>
     <textarea rows="9" placeholder="Paste your study text here…" bind:value={pastedText} disabled={uploading}></textarea>
     <label class="card-count">
       <span>Maximum cards to draft</span>

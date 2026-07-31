@@ -17,6 +17,7 @@
   import AdminUserDecks from "./routes/AdminUserDecks.svelte";
   import AdminDeckDetail from "./routes/AdminDeckDetail.svelte";
   import Settings from "./routes/Settings.svelte";
+  import BeginnerGuide from "./routes/BeginnerGuide.svelte";
 
   onMount(refreshSession);
 
@@ -37,6 +38,7 @@
   $: adminUserDecksParams = matchRoute("/admin/users/:id/decks", path);
   $: isAdminRoute = path === "/admin";
   $: isSettingsRoute = path === "/settings";
+  $: isGuideRoute = path === "/guide";
   $: isLibrary = path === "/decks" || path === "/" || path === "/login" || path === "";
 
   async function logout() {
@@ -55,6 +57,7 @@
     <header class="topbar">
       <button class="brand" on:click={() => navigate("/decks")}>Flashcards</button>
       <div class="spacer"></div>
+      <button class="btn" on:click={() => navigate("/guide")}>Beginner guide</button>
       <button class="btn" on:click={() => navigate("/settings")}>Study settings</button>
       {#if isAdmin}
         <button class="btn" on:click={() => navigate("/admin")}>Admin</button>
@@ -65,6 +68,8 @@
     <main>
       {#if isSettingsRoute}
         <Settings />
+      {:else if isGuideRoute}
+        <BeginnerGuide />
       {:else if isAdminRoute && isAdmin}
         <AdminUsers />
       {:else if adminUserDeckParams && isAdmin}

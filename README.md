@@ -2,6 +2,8 @@
 
 FoE EdTechLab's flashcard site for student self-study. This document plans where the site goes next, grounded in what's already built and in [`Flashcard_Expectation_From_Students_Summary.md`](./Flashcard_Expectation_From_Students_Summary.md), our survey of 9 Imperial students on how they study and what they'd expect from an AI-assisted version.
 
+For instructions on using the application, see the [user guide](./USER_GUIDE.md).
+
 > A working prototype implementing the plan below (and the fullstack architecture in [`design.md`](./design.md)) lives in `/frontend`, `/backend`, `/shared`, and `/infra`. To run it locally see the dev commands in `package.json`; to deploy it on a Linux server see [`infra/README.md`](./infra/README.md).
 
 ## Current baseline
