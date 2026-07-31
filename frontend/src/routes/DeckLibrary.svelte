@@ -43,7 +43,7 @@
   <h1>Your decks</h1>
 </div>
 
-<form class="new-deck card-surface" on:submit|preventDefault={createDeck}>
+<form class="new-deck card-surface" data-tour-target="create-deck" on:submit|preventDefault={createDeck}>
   <input placeholder="New deck name…" bind:value={newDeckName} />
   <button class="btn btn-primary" type="submit" disabled={creating}>Create deck</button>
 </form>

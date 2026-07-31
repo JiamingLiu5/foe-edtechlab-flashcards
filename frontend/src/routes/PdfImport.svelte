@@ -118,7 +118,7 @@
 <h1>Add cards</h1>
 <p class="muted">Create cards yourself, or ask AI to draft reviewable cards from pasted text, a PDF, or a public webpage.</p>
 
-<div class="tabs">
+<div class="tabs" data-tour-target="choose-source">
   <button class="tab" class:active={mode === "manual"} on:click={() => selectMode("manual")}>Create a card</button>
   <button class="tab" class:active={mode === "paste"} on:click={() => selectMode("paste")}>Paste cards</button>
   <button class="tab" class:active={mode === "pdf"} on:click={() => selectMode("pdf")}>From PDF</button>
@@ -126,7 +126,7 @@
 </div>
 
 {#if mode === "manual"}
-  <form class="manual-form card-surface" on:submit|preventDefault={addCard}>
+  <form class="manual-form card-surface" data-tour-target="generate-cards" on:submit|preventDefault={addCard}>
     <textarea rows="3" placeholder="Front (LaTeX supported)" bind:value={front} disabled={saving}></textarea>
     <textarea rows="3" placeholder="Back (LaTeX supported)" bind:value={back} disabled={saving}></textarea>
     <input placeholder="Tags, comma separated (optional)" bind:value={tags} disabled={saving} />
@@ -135,7 +135,7 @@
     </button>
   </form>
 {:else if mode === "paste"}
-  <form class="manual-form card-surface" on:submit|preventDefault={generateFromPastedText}>
+  <form class="manual-form card-surface" data-tour-target="generate-cards" on:submit|preventDefault={generateFromPastedText}>
     <p class="muted small">Paste any amount of study notes, lecture text, or other source material. No special formatting is needed — AI will draft cards for you to review before adding them.</p>
     <textarea rows="9" placeholder="Paste your study text here…" bind:value={pastedText} disabled={uploading}></textarea>
     <label class="card-count">
@@ -158,6 +158,7 @@
 
   <div
     class="dropzone card-surface"
+    data-tour-target="generate-cards"
     class:drag={dragOver}
     on:keydown={(event) => {
       if (event.key === "Enter" || event.key === " ") fileInput?.click();
@@ -186,7 +187,7 @@
 {:else}
   <p class="muted">Paste a link to a public webpage — we read its text and draft cards grounded in it, each citing the section it came from. You'll review every card before it's added.</p>
 
-  <form class="url-form card-surface" on:submit|preventDefault={submitUrl}>
+  <form class="url-form card-surface" data-tour-target="generate-cards" on:submit|preventDefault={submitUrl}>
     <input type="url" placeholder="https://example.com/lecture-notes" bind:value={url} disabled={uploading} required />
     <label class="card-count compact">
       <span>Cards to draft</span>

@@ -192,7 +192,7 @@
         {#if editingId === draft.id}
           <input bind:value={editFront} placeholder="Front" />
           <textarea rows="3" bind:value={editBack} placeholder="Back"></textarea>
-          <div class="row">
+          <div class="row" data-tour-target="review-drafts">
             <button class="btn btn-primary" on:click={() => accept(draft, true)} disabled={!!acceptingDraftId}>
               {acceptingDraftId === draft.id ? "Accepting…" : "Save & accept"}
             </button>
@@ -213,7 +213,7 @@
             <div class="difficulty muted small">Quiz difficulty: <strong>{draft.difficulty}</strong></div>
             {#if draft.sourceCitation}<div class="citation">📎 {draft.sourceCitation}</div>{/if}
           </div>
-          <div class="row">
+          <div class="row" data-tour-target="review-drafts">
             <button class="btn btn-primary" on:click={() => accept(draft, false)} disabled={!!acceptingDraftId}>
               {acceptingDraftId === draft.id ? "Accepting…" : isReview ? "Accept fix" : "Accept"}
             </button>

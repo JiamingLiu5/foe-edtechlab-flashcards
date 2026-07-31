@@ -192,8 +192,8 @@
 
 <button class="back" on:click={() => navigate("/decks")}>&larr; All decks</button>
 
-<div class="actions">
-  <button class="btn btn-primary" on:click={() => navigate(`/decks/${deckId}/add-cards`)}>Add cards</button>
+<div class="actions" data-tour-target="practice-modes">
+  <button class="btn btn-primary" data-tour-target="add-cards" on:click={() => navigate(`/decks/${deckId}/add-cards`)}>Add cards</button>
   <button class="btn" on:click={startAiReview} disabled={reviewing || cards.length === 0} title="Have AI check this deck's cards for factual or clarity issues">
     {reviewing ? "Starting review…" : "AI review"}
   </button>

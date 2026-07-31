@@ -18,8 +18,28 @@
   import AdminDeckDetail from "./routes/AdminDeckDetail.svelte";
   import Settings from "./routes/Settings.svelte";
   import BeginnerGuide from "./routes/BeginnerGuide.svelte";
+  import OnboardingTour from "./lib/OnboardingTour.svelte";
 
-  onMount(refreshSession);
+  type TourIndex = 0 | 1 | 2 | 3 | 4 | 5;
+
+  const TOUR_STORAGE_KEY = "flashcards:onboarding-complete";
+  const tourSteps = [
+    { target: "create-deck", title: "Create your first deck", description: "Give your topic a clear name, then select Create deck. The guide will continue when your new deck opens.", continueLabel: "" },
+    { target: "add-cards", title: "Add material to the deck", description: "Select Add cards to write cards yourself or turn your study material into draft cards.", continueLabel: "" },
+    { target: "choose-source", title: "Choose a source", description: "Choose Create a card, Paste cards, From PDF, or From link. Use the real controls, then continue when you are ready.", continueLabel: "I chose a source" },
+    { target: "generate-cards", title: "Create or generate cards", description: "Add a manual card, or set a maximum and draft cards with AI. AI drafts are always reviewed before entering your deck.", continueLabel: "I've added or drafted cards" },
+    { target: "review-drafts", title: "Review each draft", description: "Edit, accept, or discard AI drafts. Once you have reviewed them, continue to choose how you want to practise.", continueLabel: "I've reviewed my cards" },
+    { target: "practice-modes", title: "Start practising", description: "Choose Study for scheduled recall, Quiz for a test, or Self-check for written AI feedback.", continueLabel: "Finish guide" },
+  ];
+
+  let tourIndex: TourIndex | null = null;
+  let tourReady = false;
+  let autoTourChecked = false;
+
+  onMount(async () => {
+    await refreshSession();
+    tourReady = true;
+  });
 
   $: path = $currentPath;
   $: authChecked = $currentUser !== undefined;
@@ -40,11 +60,44 @@
   $: isSettingsRoute = path === "/settings";
   $: isGuideRoute = path === "/guide";
   $: isLibrary = path === "/decks" || path === "/" || path === "/login" || path === "";
+  $: if (tourIndex === 0 && deckIdParams) tourIndex = 1;
+  $: if (tourIndex === 1 && addCardsParams) tourIndex = 2;
+  $: if (tourIndex === 3 && reviewParams) tourIndex = 4;
+  $: activeTourStep = tourIndex === null ? null : tourSteps[tourIndex];
+  $: if (tourReady && isLoggedIn && !autoTourChecked) {
+    autoTourChecked = true;
+    if (!localStorage.getItem(TOUR_STORAGE_KEY)) startTour();
+  }
 
   async function logout() {
     await api.logout();
     currentUser.set(null);
     navigate("/login");
+  }
+
+  function startTour() {
+    if (!tourReady || !isLoggedIn) return;
+    tourIndex = 0;
+    navigate("/decks");
+  }
+
+  function finishTour() {
+    localStorage.setItem(TOUR_STORAGE_KEY, "true");
+    tourIndex = null;
+  }
+
+  function continueTour() {
+    if (tourIndex === null) return;
+    if (tourIndex === 2) {
+      tourIndex = 3;
+    } else if (tourIndex === 3) {
+      tourIndex = 4;
+    } else if (tourIndex === 4) {
+      tourIndex = 5;
+      if (reviewParams) navigate(`/decks/${reviewParams.id}`);
+    } else if (tourIndex === 5) {
+      finishTour();
+    }
   }
 </script>
 
@@ -57,7 +110,7 @@
     <header class="topbar">
       <button class="brand" on:click={() => navigate("/decks")}>Flashcards</button>
       <div class="spacer"></div>
-      <button class="btn" on:click={() => navigate("/guide")}>Beginner guide</button>
+      <button class="btn" on:click={startTour}>Beginner guide</button>
       <button class="btn" on:click={() => navigate("/settings")}>Study settings</button>
       {#if isAdmin}
         <button class="btn" on:click={() => navigate("/admin")}>Admin</button>
@@ -94,6 +147,16 @@
         <DeckLibrary />
       {/if}
     </main>
+    {#if activeTourStep}
+      <OnboardingTour
+        target={activeTourStep.target}
+        title={activeTourStep.title}
+        description={activeTourStep.description}
+        continueLabel={activeTourStep.continueLabel}
+        onContinue={continueTour}
+        onSkip={finishTour}
+      />
+    {/if}
   </div>
 {/if}
 
