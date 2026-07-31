@@ -13,6 +13,7 @@
   let left = 24;
   let placement: "above" | "below" = "below";
   let foundTarget = false;
+  let modalOpen = false;
   let refreshTimer: ReturnType<typeof setInterval> | undefined;
   let previousTarget = "";
 
@@ -22,6 +23,16 @@
   }
 
   function positionTooltip() {
+    // Application dialogs (such as the quiz-preference prompt after accepting
+    // a draft) must remain the only active layer. Pause the tour until the
+    // student resolves the dialog, rather than letting two instructions overlap.
+    modalOpen = !!document.querySelector("dialog[open], .prompt-backdrop");
+    if (modalOpen) {
+      clearHighlight();
+      foundTarget = false;
+      return;
+    }
+
     const nextTarget = document.querySelector<HTMLElement>(`[data-tour-target="${target}"]`);
     if (nextTarget !== highlighted) {
       clearHighlight();
@@ -65,24 +76,26 @@
   $: target, positionTooltip();
 </script>
 
-<aside
-  class="tour-popover"
-  class:above={placement === "above"}
-  class:waiting={!foundTarget}
-  style:top={`${top}px`}
-  style:left={`${left}px`}
-  aria-live="polite"
-  aria-label="Beginner guide"
->
-  <p class="eyebrow">Beginner guide</p>
-  <h2>{title}</h2>
-  <p>{description}</p>
-  {#if !foundTarget}<p class="waiting-message">Waiting for this screen to open…</p>{/if}
-  <div class="actions">
-    <button class="skip" on:click={onSkip}>Skip guide</button>
-    {#if continueLabel && onContinue}<button class="btn btn-primary" on:click={onContinue}>{continueLabel}</button>{/if}
-  </div>
-</aside>
+{#if !modalOpen}
+  <aside
+    class="tour-popover"
+    class:above={placement === "above"}
+    class:waiting={!foundTarget}
+    style:top={`${top}px`}
+    style:left={`${left}px`}
+    aria-live="polite"
+    aria-label="Beginner guide"
+  >
+    <p class="eyebrow">Beginner guide</p>
+    <h2>{title}</h2>
+    <p>{description}</p>
+    {#if !foundTarget}<p class="waiting-message">Waiting for this screen to open…</p>{/if}
+    <div class="actions">
+      <button class="skip" on:click={onSkip}>Skip guide</button>
+      {#if continueLabel && onContinue}<button class="btn btn-primary" on:click={onContinue}>{continueLabel}</button>{/if}
+    </div>
+  </aside>
+{/if}
 
 <style>
   :global(.tour-highlight) { position: relative !important; z-index: 30 !important; outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 8px; box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 20%, transparent); }
