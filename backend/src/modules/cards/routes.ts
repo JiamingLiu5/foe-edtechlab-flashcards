@@ -31,7 +31,7 @@ export async function cardRoutes(app: FastifyInstance) {
       const isBulkCreate = Array.isArray(body?.cards);
       const items: { front: string; back: string; tags?: string[] }[] = isBulkCreate
         ? body.cards
-        : [{ front: body?.front, back: body?.back }];
+        : [{ front: body?.front, back: body?.back, tags: body?.tags }];
 
       const cleaned = items
         .map((c) => ({

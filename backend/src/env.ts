@@ -28,6 +28,7 @@ export const env = {
   maxUploadBytes: Number(process.env.MAX_UPLOAD_MB ?? 20) * 1024 * 1024,
   maxPdfPages: Number(process.env.MAX_PDF_PAGES ?? 30),
   maxGeneratedCards: Number(process.env.MAX_GENERATED_CARDS ?? 25),
+  maxPastedTextChars: Number(process.env.MAX_PASTED_TEXT_CHARS ?? 100_000),
   dailyGenerationQuota: Number(process.env.MAX_GENERATION_JOBS_PER_DAY ?? process.env.DAILY_GENERATION_QUOTA ?? 5),
   dailyGradingQuota: Number(process.env.MAX_GRADING_JOBS_PER_DAY ?? process.env.DAILY_GRADING_QUOTA ?? 50),
   dailyDeckReviewQuota: Number(process.env.DAILY_DECK_REVIEW_QUOTA ?? 5),

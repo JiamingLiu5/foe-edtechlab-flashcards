@@ -129,6 +129,7 @@ enum GenerationJobKind {
 enum GenerationSourceType {
   pdf
   url
+  text
 }
 
 model GenerationJob {
@@ -142,6 +143,8 @@ model GenerationJob {
   sourceType     GenerationSourceType @default(pdf)
   sourceFilename String
   sourceUrl      String?
+  /// The pasted study text for text imports. PDF and URL imports keep their source elsewhere.
+  sourceText     String?
   uploadPath     String?
   cardLimit      Int                  @default(25)
   error          String?

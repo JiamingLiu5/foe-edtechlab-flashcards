@@ -6,7 +6,7 @@
 
   export let deckId: string;
 
-  let mode: "manual" | "bulk" | "pdf" | "url" = "manual";
+  let mode: "manual" | "paste" | "pdf" | "url" = "manual";
   let dragOver = false;
   let uploading = false;
   let saving = false;
@@ -16,7 +16,7 @@
   let front = "";
   let back = "";
   let tags = "";
-  let bulkText = "";
+  let pastedText = "";
   let requestedCardCount = 25;
   let quizPromptCard: CardDTO | null = null;
   let quizPromptSaving = false;
@@ -60,31 +60,17 @@
     }
   }
 
-  async function addBulk() {
-    const cards = bulkText
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [front, ...backParts] = line.split(/\t| \| /);
-        return { front: front?.trim() ?? "", back: backParts.join(" | ").trim() };
-      })
-      .filter((card) => card.front && card.back);
-
-    if (!cards.length) {
-      error = "Add at least one line with a front and back separated by a tab or |.";
-      return;
-    }
-
-    saving = true;
+  async function generateFromPastedText() {
+    if (!pastedText.trim()) return;
+    uploading = true;
     error = "";
     try {
-      await api.createCardsBulk(deckId, cards);
-      bulkText = "";
+      const { job } = await api.generateFromText(deckId, pastedText.trim(), requestedCardCount);
+      navigate(`/decks/${deckId}/jobs/${job.id}/review`);
     } catch (e) {
-      error = e instanceof ApiError ? e.message : "Couldn't add these cards.";
+      error = e instanceof ApiError ? e.message : "Couldn't draft cards from this text.";
     } finally {
-      saving = false;
+      uploading = false;
     }
   }
 
@@ -130,11 +116,11 @@
 <button class="back" on:click={() => navigate(`/decks/${deckId}`)}>&larr; Back to deck</button>
 
 <h1>Add cards</h1>
-<p class="muted">Create cards yourself, paste several at once, or ask AI to draft cards from a PDF or public webpage.</p>
+<p class="muted">Create cards yourself, or ask AI to draft reviewable cards from pasted text, a PDF, or a public webpage.</p>
 
 <div class="tabs">
   <button class="tab" class:active={mode === "manual"} on:click={() => selectMode("manual")}>Create a card</button>
-  <button class="tab" class:active={mode === "bulk"} on:click={() => selectMode("bulk")}>Paste cards</button>
+  <button class="tab" class:active={mode === "paste"} on:click={() => selectMode("paste")}>Paste cards</button>
   <button class="tab" class:active={mode === "pdf"} on:click={() => selectMode("pdf")}>From PDF</button>
   <button class="tab" class:active={mode === "url"} on:click={() => selectMode("url")}>From link</button>
 </div>
@@ -148,12 +134,17 @@
       {saving ? "Adding…" : "Add card"}
     </button>
   </form>
-{:else if mode === "bulk"}
-  <form class="manual-form card-surface" on:submit|preventDefault={addBulk}>
-    <p class="muted small">One card per line: <code>front &lt;tab&gt; back</code> or <code>front | back</code></p>
-    <textarea rows="9" placeholder={"What is the capital of France?\tParis"} bind:value={bulkText} disabled={saving}></textarea>
-    <button class="btn btn-primary" type="submit" disabled={saving || !bulkText.trim()}>
-      {saving ? "Adding…" : "Add all cards"}
+{:else if mode === "paste"}
+  <form class="manual-form card-surface" on:submit|preventDefault={generateFromPastedText}>
+    <p class="muted small">Paste study notes, lecture text, or other source material. AI will draft cards from it for you to review before adding them.</p>
+    <textarea rows="9" placeholder="Paste your study text here…" bind:value={pastedText} disabled={uploading}></textarea>
+    <label class="card-count">
+      <span>Maximum cards to draft</span>
+      <input type="number" min="1" step="1" bind:value={requestedCardCount} disabled={uploading} />
+      <small>AI will generate no more than this number. Your administrator may set a maximum.</small>
+    </label>
+    <button class="btn btn-primary" type="submit" disabled={uploading || !pastedText.trim()}>
+      {uploading ? "Drafting…" : "Draft cards with AI"}
     </button>
   </form>
 {:else if mode === "pdf"}

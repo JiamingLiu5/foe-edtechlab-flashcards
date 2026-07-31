@@ -29,7 +29,7 @@
 
   $: STATUS_LABEL = {
     queued: "Queued…",
-    extracting: job?.sourceType === "url" ? "Reading the page…" : "Reading PDF…",
+    extracting: job?.sourceType === "url" ? "Reading the page…" : job?.sourceType === "pdf" ? "Reading PDF…" : "Preparing pasted text…",
     generating: isReview ? "Checking your deck for issues…" : "Drafting cards with Claude…",
     ready: "Ready for review",
     failed: "Failed",
@@ -155,7 +155,7 @@
       <ul class="source-list">
         {#each sources as source (source.id)}
           <li>
-            <span class="source-label">{source.sourceType === "url" ? "🔗" : "📄"} {source.label}</span>
+            <span class="source-label">{source.sourceType === "url" ? "🔗" : source.sourceType === "text" ? "📋" : "📄"} {source.label}</span>
             <span class="muted small">{new Date(source.createdAt).toLocaleDateString()}</span>
             <button class="delete" disabled={removingSourceId === source.id} on:click={() => removeSource(source.id)}>Remove</button>
           </li>

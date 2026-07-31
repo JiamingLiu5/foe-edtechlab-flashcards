@@ -11,6 +11,7 @@
   type McqQuestion = { kind: "mcq"; cardId: string; front: string; back: string; options: string[]; answer: string; difficulty: CardDifficulty; points: number };
   type FillQuestion = { kind: "fill"; cardId: string; front: string; back: string; options: string[]; answer: string; difficulty: CardDifficulty; points: number };
   type QuizQuestion = McqQuestion | FillQuestion;
+  type QuizAnswer = { selected?: string; typedAnswer?: string; fillResult?: SelfCheckGradeDTO };
   type QuizStage = "setup" | "preview" | "quiz" | "done";
 
   let stage: QuizStage = "setup";
@@ -24,22 +25,26 @@
   let configError = "";
 
   let index = 0;
-  let selected: string | null = null;
+  let answers: QuizAnswer[] = [];
   let typedAnswer = "";
-  let fillChecked = false;
   let checking = false;
-  let fillResult: SelfCheckGradeDTO | null = null;
   let fillError = "";
-  let pointsEarned = 0;
-  let fillScore = 0;
-  let fillAnswered = 0;
   let remainingSeconds: number | null = null;
   let timer: ReturnType<typeof setInterval> | undefined;
 
   $: questionCount = configuredQuestions.length;
   $: quizFinished = index >= questionCount;
   $: currentQuestion = configuredQuestions[index] ?? null;
+  $: currentAnswer = answers[index] ?? {};
   $: totalPoints = configuredQuestions.reduce((total, question) => total + question.points, 0);
+  $: pointsEarned = configuredQuestions.reduce((total, question, questionIndex) => {
+    const answer = answers[questionIndex];
+    if (question.kind === "mcq") return total + (answer?.selected === question.answer ? question.points : 0);
+    return total + (answer?.fillResult ? question.points * (answer.fillResult.score / 100) : 0);
+  }, 0);
+  $: fillResults = answers.flatMap((answer) => answer.fillResult ? [answer.fillResult] : []);
+  $: fillAnswered = fillResults.length;
+  $: fillScore = fillResults.reduce((total, result) => total + result.score, 0);
   $: minutesLabel = remainingSeconds === null
     ? ""
     : `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`;
@@ -130,47 +135,44 @@
       points: Math.max(0, Number.isFinite(question.points) ? question.points : 1),
     }));
     index = 0;
-    selected = null;
+    answers = configuredQuestions.map(() => ({}));
     typedAnswer = "";
-    fillChecked = false;
     checking = false;
-    fillResult = null;
     fillError = "";
-    pointsEarned = 0;
-    fillScore = 0;
-    fillAnswered = 0;
     stage = "quiz";
     startTimer();
   }
 
-  function choose(option: string, question: McqQuestion) {
-    if (selected) return;
-    selected = option;
-    if (option === question.answer) pointsEarned += question.points;
+  function saveAnswer(questionIndex: number, answer: QuizAnswer) {
+    answers = answers.map((current, answerIndex) => answerIndex === questionIndex ? answer : current);
+  }
+
+  function choose(option: string) {
+    if (currentAnswer.selected) return;
+    saveAnswer(index, { selected: option });
   }
 
   function next() {
-    selected = null;
     typedAnswer = "";
-    fillChecked = false;
-    fillResult = null;
     fillError = "";
     index += 1;
     if (index >= questionCount) finishQuiz();
   }
 
-  async function checkFillAnswer() {
+  async function submitFillAnswer() {
     const question = currentQuestion;
-    if (!typedAnswer.trim() || !question || question.kind !== "fill" || fillChecked || checking) return;
+    const questionIndex = index;
+    const answer = typedAnswer.trim();
+    if (!answer || !question || question.kind !== "fill" || checking) return;
 
     checking = true;
     fillError = "";
     try {
-      fillResult = await api.gradeSelfCheck(question.cardId, typedAnswer.trim());
-      pointsEarned += question.points * (fillResult.score / 100);
-      fillScore += fillResult.score;
-      fillAnswered += 1;
-      fillChecked = true;
+      // Grade each fill-in response as it is submitted, but defer all feedback
+      // and correctness signals until the final results screen.
+      const fillResult = await api.gradeSelfCheck(question.cardId, answer);
+      saveAnswer(questionIndex, { typedAnswer: answer, fillResult });
+      if (stage === "quiz" && index === questionIndex) next();
     } catch (error) {
       fillError = error instanceof ApiError
         ? error.message
@@ -185,6 +187,7 @@
   function restartSetup() {
     clearTimer();
     configuredQuestions = [];
+    answers = [];
     stage = "setup";
   }
 
@@ -284,6 +287,29 @@
     <div class="card-surface done">
       <p>Points: {Number(pointsEarned.toFixed(2))} / {totalPoints}</p>
       {#if fillAnswered}<p>Average AI score: {Math.round(fillScore / fillAnswered)}%</p>{/if}
+      <h2>Results</h2>
+      <ol class="results-list">
+        {#each configuredQuestions as question, questionIndex}
+          {@const answer = answers[questionIndex] ?? {}}
+          <li class="result-item" class:correct-result={question.kind === "mcq" ? answer.selected === question.answer : (answer.fillResult?.score ?? 0) >= 70}>
+            <div class="result-question"><Katex text={question.front} /></div>
+            {#if question.kind === "mcq"}
+              <p><strong>{answer.selected === question.answer ? "Correct" : "Incorrect"}</strong></p>
+              <p>Your answer: {#if answer.selected}<Katex text={answer.selected} />{:else}Not answered{/if}</p>
+              {#if answer.selected !== question.answer}<p>Correct answer: <Katex text={question.answer} /></p>{/if}
+            {:else if answer.fillResult}
+              <p><strong>{answer.fillResult.score >= 70 ? "Good answer" : "Needs improvement"} · {answer.fillResult.score}%</strong></p>
+              <p>Your answer: {answer.typedAnswer}</p>
+              <p>{answer.fillResult.feedback}</p>
+              <p>Correct answer: <Katex text={question.back} /></p>
+              {#if answer.fillResult.missing.length}<p class="missing"><strong>Still to include:</strong> {answer.fillResult.missing.join("; ")}</p>{/if}
+            {:else}
+              <p><strong>Not answered</strong></p>
+              <p>Correct answer: <Katex text={question.back} /></p>
+            {/if}
+          </li>
+        {/each}
+      </ol>
       <button class="btn btn-primary" on:click={restartSetup}>Configure another quiz</button>
     </div>
   {:else if currentQuestion?.kind === "mcq"}
@@ -298,16 +324,15 @@
         {#each q.options as option}
           <button
             class="option"
-            class:correct={selected && option === q.answer}
-            class:wrong={selected === option && option !== q.answer}
-            disabled={!!selected}
-            on:click={() => choose(option, q)}
+            class:selected={currentAnswer.selected === option}
+            disabled={!!currentAnswer.selected}
+            on:click={() => choose(option)}
           >
             <Katex text={option} />
           </button>
         {/each}
       </div>
-      {#if selected}<button class="btn btn-primary next" on:click={next}>Next</button>{/if}
+      {#if currentAnswer.selected}<button class="btn btn-primary next" on:click={next}>{index + 1 === questionCount ? "Finish quiz" : "Next question"}</button>{/if}
     </div>
   {:else if currentQuestion?.kind === "fill"}
     {@const q = currentQuestion}
@@ -315,22 +340,12 @@
       <p class="muted small">Question {index + 1} of {questionCount} · {q.points} point{q.points === 1 ? "" : "s"}</p>
       {#if remainingSeconds !== null}<strong class="timer">{minutesLabel}</strong>{/if}
     </div>
-    <form class="card-surface question" on:submit|preventDefault={checkFillAnswer}>
+    <form class="card-surface question" on:submit|preventDefault={submitFillAnswer}>
       <div class="front"><Katex text={q.front} /></div>
       <label for="fill-answer" class="muted small">Your answer</label>
-      <textarea id="fill-answer" rows="4" bind:value={typedAnswer} disabled={fillChecked || checking} placeholder="Type your answer…"></textarea>
+      <textarea id="fill-answer" rows="4" bind:value={typedAnswer} disabled={checking} placeholder="Type your answer…"></textarea>
       {#if fillError}<p class="error">{fillError}</p>{/if}
-      {#if fillChecked && fillResult}
-        <div class="answer-feedback" class:correct-answer={fillResult.score >= 70}>
-          <strong>{fillResult.score >= 70 ? "Good answer" : "Keep working on it"} · {fillResult.score}%</strong>
-          <p>{fillResult.feedback}</p>
-          <p>Correct answer: <Katex text={q.back} /></p>
-          {#if fillResult.missing.length}<p class="missing"><strong>Still to include:</strong> {fillResult.missing.join("; ")}</p>{/if}
-        </div>
-        <button class="btn btn-primary next" type="button" on:click={next}>Next</button>
-      {:else}
-        <button class="btn btn-primary next" type="submit" disabled={!typedAnswer.trim() || checking}>{checking ? "AI is checking…" : "Check with AI"}</button>
-      {/if}
+      <button class="btn btn-primary next" type="submit" disabled={!typedAnswer.trim() || checking}>{checking ? "Saving answer…" : index + 1 === questionCount ? "Submit quiz" : "Save & next"}</button>
     </form>
   {/if}
 {/if}
@@ -366,16 +381,19 @@
   .front { font-weight: 600; font-size: 1.1rem; margin-bottom: 1.1rem; }
   .options { display: flex; flex-direction: column; gap: 0.55rem; }
   .option { text-align: left; padding: 0.7rem 0.9rem; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
-  .option.correct { border-color: var(--good); background: rgba(74, 222, 128, 0.12); }
-  .option.wrong { border-color: var(--bad); background: rgba(248, 113, 113, 0.12); }
+  .option.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface-2)); }
   .next { margin-top: 1.25rem; }
   .done { padding: 2rem; text-align: center; }
   textarea { width: 100%; margin-top: 0.4rem; }
-  .answer-feedback { margin-top: 1rem; padding: 0.75rem; border: 1px solid var(--bad); border-radius: 8px; background: rgba(248, 113, 113, 0.12); }
-  .answer-feedback.correct-answer { border-color: var(--good); background: rgba(74, 222, 128, 0.12); }
-  .answer-feedback p { margin: 0.35rem 0 0; }
   .missing { color: var(--text-dim); }
   .error { color: var(--bad); margin: 0; }
+  .done { text-align: left; }
+  .done > :is(p, h2) { text-align: center; }
+  .results-list { display: grid; gap: 0.8rem; margin: 1.25rem 0; padding-left: 1.4rem; }
+  .result-item { padding: 0.9rem; border: 1px solid var(--bad); border-radius: 8px; background: rgba(248, 113, 113, 0.08); }
+  .result-item.correct-result { border-color: var(--good); background: rgba(74, 222, 128, 0.08); }
+  .result-item p { margin: 0.45rem 0 0; }
+  .result-question { font-weight: 600; }
   @media (max-width: 600px) {
     .mode-grid { grid-template-columns: 1fr; }
     .quiz-heading, .preview-heading { align-items: flex-start; flex-direction: column; }

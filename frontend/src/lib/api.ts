@@ -98,6 +98,8 @@ export const api = {
   },
   importUrl: (deckId: string, url: string, cardLimit: number) =>
     request<{ job: GenerationJobDTO }>(`/decks/${deckId}/generate-url`, { method: "POST", body: JSON.stringify({ url, cardLimit }) }),
+  generateFromText: (deckId: string, text: string, cardLimit: number) =>
+    request<{ job: GenerationJobDTO }>(`/decks/${deckId}/generate-text`, { method: "POST", body: JSON.stringify({ text, cardLimit }) }),
   startDeckReview: (deckId: string) =>
     request<{ job: GenerationJobDTO }>(`/decks/${deckId}/review`, { method: "POST", body: JSON.stringify({}) }),
   getJob: (jobId: string) => request<{ job: GenerationJobDTO }>(`/generation-jobs/${jobId}`),

@@ -20,7 +20,7 @@ function quotaBucketForJob(kind: string): string {
 }
 
 /**
- * Retains the successfully-extracted source material as a DeckSource, independent of whether
+ * Retains the successfully-extracted or pasted source material as a DeckSource, independent of whether
  * card drafting from it later succeeds — a later AI review can ground itself in it either way.
  * For PDFs, the temp upload is moved to a permanent location alongside it.
  */
@@ -36,6 +36,18 @@ async function persistDeckSource(
         sourceType: "url",
         label: sourceTitle || job.sourceUrl || job.sourceFilename,
         sourceUrl: job.sourceUrl,
+        extractedText: sourceText,
+      },
+    });
+    return;
+  }
+
+  if (job.sourceType === "text") {
+    await prisma.deckSource.create({
+      data: {
+        deckId: job.deckId,
+        sourceType: "text",
+        label: job.sourceFilename,
         extractedText: sourceText,
       },
     });
@@ -66,6 +78,7 @@ async function processImportJob(job: {
   sourceFilename: string;
   sourceType: string;
   sourceUrl: string | null;
+  sourceText: string | null;
   uploadPath: string | null;
   cardLimit: number;
 }) {
@@ -77,6 +90,9 @@ async function processImportJob(job: {
     const extracted = await extractUrlText(job.sourceUrl!);
     sourceText = extracted.text;
     sourceTitle = extracted.title;
+  } else if (job.sourceType === "text") {
+    if (!job.sourceText) throw new Error("Pasted text is missing from this generation job.");
+    sourceText = job.sourceText;
   } else {
     sourceText = await extractPdfText({
       pdfBase64: (await fs.readFile(job.uploadPath!)).toString("base64"),

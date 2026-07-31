@@ -182,6 +182,57 @@ export async function generationRoutes(app: FastifyInstance) {
     return reply.code(202).send({ job: toDTO({ ...job, drafts: [] }) });
   });
 
+  app.post<{ Params: { id: string }; Body: { text?: string; cardLimit?: number } }>("/api/decks/:id/generate-text", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+
+    const deck = await prisma.deck.findFirst({ where: { id: req.params.id, ownerId: user.userId } });
+    if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
+
+    const text = req.body?.text?.trim();
+    if (!text) return reply.code(400).send({ error: "missing_text", message: "Paste some study text to draft cards from." });
+    if (text.length > env.maxPastedTextChars) {
+      return reply.code(413).send({
+        error: "pasted_text_too_long",
+        message: `Pasted text exceeds the ${env.maxPastedTextChars.toLocaleString()} character limit.`,
+      });
+    }
+
+    const maxGeneratedCards = await getEffectiveQuotaLimit(user.userId, "generated_card_limit", env.maxGeneratedCards);
+    const cardLimit = parseCardLimit(req.body?.cardLimit, maxGeneratedCards);
+    if (cardLimit === null) {
+      return reply.code(400).send({
+        error: "invalid_card_limit",
+        message: `Choose a whole number of cards from 1 to ${maxGeneratedCards}.`,
+      });
+    }
+
+    const quota = await consumeDailyQuota(user.userId, "generation", env.dailyGenerationQuota);
+    if (!quota.allowed) {
+      return reply.code(429).send({
+        error: "quota_exceeded",
+        message: `Daily generation limit (${quota.limit}) reached. Try again tomorrow.`,
+      });
+    }
+
+    const job = await prisma.generationJob.create({
+      data: {
+        deckId: deck.id,
+        requestedById: user.userId,
+        kind: "import",
+        sourceType: "text",
+        sourceFilename: "Pasted text",
+        sourceText: text,
+        cardLimit,
+        status: "queued",
+      },
+    });
+
+    await generationQueue.add("generate", { jobId: job.id });
+
+    return reply.code(202).send({ job: toDTO({ ...job, drafts: [] }) });
+  });
+
   app.post<{ Params: { id: string } }>("/api/decks/:id/review", async (req, reply) => {
     const user = requireUser(req, reply);
     if (!user) return;

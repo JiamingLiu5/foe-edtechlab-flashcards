@@ -31,7 +31,7 @@ export interface DeckSummaryDTO {
   createdAt: string;
 }
 
-/** A retained PDF/URL the deck was built from — used to ground later AI review. */
+/** A retained PDF, URL, or pasted-text source — used to ground later AI review. */
 export interface DeckSourceDTO {
   id: string;
   sourceType: GenerationSourceType;
@@ -64,9 +64,9 @@ export type GenerationJobStatus =
   | "ready"
   | "failed";
 
-/** "import" drafts cards from a fresh PDF/URL source; "review" checks existing deck cards for issues. */
+/** "import" drafts cards from a fresh source; "review" checks existing deck cards for issues. */
 export type GenerationJobKind = "import" | "review";
-export type GenerationSourceType = "pdf" | "url";
+export type GenerationSourceType = "pdf" | "url" | "text";
 
 export interface GenerationJobDTO {
   id: string;
