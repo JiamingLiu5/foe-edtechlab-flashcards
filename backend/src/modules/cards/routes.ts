@@ -28,7 +28,8 @@ export async function cardRoutes(app: FastifyInstance) {
       if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
 
       const body = req.body as any;
-      const items: { front: string; back: string; tags?: string[] }[] = Array.isArray(body?.cards)
+      const isBulkCreate = Array.isArray(body?.cards);
+      const items: { front: string; back: string; tags?: string[] }[] = isBulkCreate
         ? body.cards
         : [{ front: body?.front, back: body?.back }];
 
@@ -46,7 +47,18 @@ export async function cardRoutes(app: FastifyInstance) {
 
       const created = await prisma.$transaction(
         cleaned.map((c) =>
-          prisma.card.create({ data: { deckId: deck.id, front: c.front, back: c.back, tags: c.tags, source: "manual" } })
+          prisma.card.create({
+            data: {
+              deckId: deck.id,
+              front: c.front,
+              back: c.back,
+              tags: c.tags,
+              source: "manual",
+              // The single-card flow immediately asks the student to choose.
+              // Bulk-created cards retain the historical default of being usable in quizzes.
+              includeInQuiz: isBulkCreate,
+            },
+          })
         )
       );
 

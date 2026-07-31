@@ -1,6 +1,8 @@
 <script lang="ts">
+  import type { CardDTO } from "@flashcards/shared";
   import { api, ApiError } from "../lib/api";
   import { navigate } from "../lib/router";
+  import Katex from "../lib/Math.svelte";
 
   export let deckId: string;
 
@@ -16,6 +18,9 @@
   let tags = "";
   let bulkText = "";
   let requestedCardCount = 25;
+  let quizPromptCard: CardDTO | null = null;
+  let quizPromptSaving = false;
+  let quizPromptError = "";
 
   function selectMode(nextMode: typeof mode) {
     mode = nextMode;
@@ -27,14 +32,31 @@
     saving = true;
     error = "";
     try {
-      await api.createCard(deckId, front.trim(), back.trim(), tags.split(",").map((tag) => tag.trim()).filter(Boolean));
+      const { cards } = await api.createCard(deckId, front.trim(), back.trim(), tags.split(",").map((tag) => tag.trim()).filter(Boolean));
       front = "";
       back = "";
       tags = "";
+      quizPromptCard = cards[0] ?? null;
+      quizPromptError = "";
     } catch (e) {
       error = e instanceof ApiError ? e.message : "Couldn't add this card.";
     } finally {
       saving = false;
+    }
+  }
+
+  async function chooseQuizPreference(includeInQuiz: boolean) {
+    if (!quizPromptCard || quizPromptSaving) return;
+
+    quizPromptSaving = true;
+    quizPromptError = "";
+    try {
+      await api.updateCard(deckId, quizPromptCard.id, { includeInQuiz });
+      quizPromptCard = null;
+    } catch (e) {
+      quizPromptError = e instanceof ApiError ? e.message : "Couldn't update the quiz preference.";
+    } finally {
+      quizPromptSaving = false;
     }
   }
 
@@ -187,6 +209,24 @@
 
 {#if error}<p class="error">{error}</p>{/if}
 
+{#if quizPromptCard}
+  <div class="prompt-backdrop">
+    <dialog open class="card-surface quiz-prompt" aria-labelledby="quiz-prompt-title">
+      <h2 id="quiz-prompt-title">Use this card in quizzes?</h2>
+      <p class="muted">You created:</p>
+      <div class="accepted-question"><Katex text={quizPromptCard.front} /></div>
+      <p class="muted">Would you like to include it in multiple-choice and fill-in-the-blank quizzes?</p>
+      {#if quizPromptError}<p class="error">{quizPromptError}</p>{/if}
+      <div class="prompt-actions">
+        <button class="btn btn-primary" on:click={() => chooseQuizPreference(true)} disabled={quizPromptSaving}>
+          {quizPromptSaving ? "Saving…" : "Yes, use in quizzes"}
+        </button>
+        <button class="btn" on:click={() => chooseQuizPreference(false)} disabled={quizPromptSaving}>No, not now</button>
+      </div>
+    </dialog>
+  </div>
+{/if}
+
 <style>
   .back { background: none; border: none; color: var(--text-dim); margin-bottom: 1rem; padding: 0; }
   .back:hover { color: var(--text); }
@@ -221,4 +261,10 @@
   .manual-form .btn { align-self: flex-start; }
   .small { font-size: 0.8rem; }
   .error { color: var(--bad); margin-top: 1rem; }
+  .prompt-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 1.5rem; background: rgba(11, 14, 20, 0.58); }
+  .quiz-prompt { position: fixed; inset: 0; width: min(calc(100% - 3rem), 460px); height: fit-content; max-height: calc(100vh - 3rem); margin: auto; padding: 1.5rem; overflow: auto; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32); }
+  .quiz-prompt h2 { margin: 0 0 0.65rem; }
+  .quiz-prompt p { line-height: 1.5; }
+  .accepted-question { margin: 0.5rem 0 1rem; padding: 0.8rem; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; background: var(--surface-2); font-weight: 600; }
+  .prompt-actions { display: flex; gap: 0.5rem; margin-top: 0.8rem; }
 </style>

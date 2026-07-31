@@ -3,6 +3,7 @@ import type {
   AdminUserQuotaDTO,
   AiDraftDTO,
   CardDTO,
+  CardDifficulty,
   DeckSourceDTO,
   DeckSummaryDTO,
   DueCardDTO,
@@ -115,9 +116,9 @@ export const api = {
   updateStudySettings: (settings: StudySettingsDTO) =>
     request<StudySettingsDTO>("/account/study-settings", { method: "PUT", body: JSON.stringify(settings) }),
   getQuiz: (deckId: string) =>
-    request<{ questions: { cardId: string; front: string; options: string[]; answer: string }[] }>(`/decks/${deckId}/quiz`),
+    request<{ questions: { cardId: string; front: string; options: string[]; answer: string; difficulty: CardDifficulty }[] }>(`/decks/${deckId}/quiz`),
   getFillQuiz: (deckId: string) =>
-    request<{ questions: { cardId: string; front: string; back: string }[] }>(`/decks/${deckId}/quiz?mode=fill`),
+    request<{ questions: { cardId: string; front: string; back: string; difficulty: CardDifficulty }[] }>(`/decks/${deckId}/quiz?mode=fill`),
 
   gradeSelfCheck: async (cardId: string, answer: string) => {
     const controller = new AbortController();

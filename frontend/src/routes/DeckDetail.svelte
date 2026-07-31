@@ -20,6 +20,13 @@
   let editTags = "";
   let editSaving = false;
   let editError = "";
+  let quizPromptCard: CardDTO | null = null;
+  let quizPromptSaving = false;
+  let quizPromptError = "";
+  const FINISHED_TAG = "finished";
+  const UNFINISHED_TAG = "unfinished";
+  let memorizedSavingCardId = "";
+  let memorizedError = "";
 
   $: allTags = [...new Set(cards.flatMap((card) => card.tags))].sort();
   $: visibleCards = cards.filter((card) => {
@@ -69,18 +76,71 @@
     editSaving = true;
     editError = "";
     try {
-      await api.updateCard(deckId, card.id, {
+      const { card: updatedCard } = await api.updateCard(deckId, card.id, {
         front: editFront.trim(),
         back: editBack.trim(),
         tags: editTags.split(",").map((tag) => tag.trim()).filter(Boolean),
       });
       editing = false;
       editingCardId = null;
+      quizPromptCard = updatedCard;
+      quizPromptError = "";
       await load();
     } catch (error) {
       editError = error instanceof ApiError ? error.message : "Couldn't save this card.";
     } finally {
       editSaving = false;
+    }
+  }
+
+  function withProgressTag(tags: string[], memorized: boolean) {
+    return [
+      ...tags.filter((tag) => tag !== FINISHED_TAG && tag !== UNFINISHED_TAG),
+      memorized ? FINISHED_TAG : UNFINISHED_TAG,
+    ];
+  }
+
+  async function setMemorized(card: CardDTO, memorized: boolean) {
+    if (memorizedSavingCardId) return;
+
+    memorizedSavingCardId = card.id;
+    memorizedError = "";
+    // The first status change also labels every remaining unclassified card as unfinished.
+    const cardsToUpdate = cards.filter((otherCard) =>
+      otherCard.id === card.id || (!otherCard.tags.includes(FINISHED_TAG) && !otherCard.tags.includes(UNFINISHED_TAG))
+    );
+    try {
+      await Promise.all(cardsToUpdate.map((otherCard) =>
+        api.updateCard(deckId, otherCard.id, {
+          tags: withProgressTag(otherCard.tags, otherCard.id === card.id ? memorized : false),
+        })
+      ));
+      const updatedIds = new Set(cardsToUpdate.map((otherCard) => otherCard.id));
+      cards = cards.map((otherCard) => updatedIds.has(otherCard.id)
+        ? { ...otherCard, tags: withProgressTag(otherCard.tags, otherCard.id === card.id ? memorized : false) }
+        : otherCard
+      );
+    } catch (error) {
+      memorizedError = error instanceof ApiError ? error.message : "Couldn't update the memorized status.";
+      await load();
+    } finally {
+      memorizedSavingCardId = "";
+    }
+  }
+
+  async function chooseQuizPreference(includeInQuiz: boolean) {
+    if (!quizPromptCard || quizPromptSaving) return;
+
+    quizPromptSaving = true;
+    quizPromptError = "";
+    try {
+      await api.updateCard(deckId, quizPromptCard.id, { includeInQuiz });
+      quizPromptCard = null;
+      await load();
+    } catch (error) {
+      quizPromptError = error instanceof ApiError ? error.message : "Couldn't update the quiz preference.";
+    } finally {
+      quizPromptSaving = false;
     }
   }
 
@@ -127,6 +187,7 @@
 </div>
 
 {#if reviewError}<p class="error">{reviewError}</p>{/if}
+{#if memorizedError}<p class="error">{memorizedError}</p>{/if}
 
 <div class="filters">
   <input type="search" placeholder="Search questions and answers…" bind:value={search} />
@@ -149,29 +210,41 @@
   {@const card = currentCard!}
   <div class="viewer">
     <button class="card-arrow" on:click={() => moveCard(-1)} disabled={visibleCards.length < 2 || editing} aria-label="Previous card">&larr;</button>
-    <div
-      class="card-surface flashcard"
-      class:flipped
-      on:click={toggleCard}
-      on:keydown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          toggleCard();
-        }
-      }}
-      role="button"
-      tabindex="0"
-      aria-label={flipped ? "Show the question" : "Show the answer"}
-    >
-      <p class="face-label muted small">{flipped ? "Answer" : "Question"}</p>
-      <div class="face"><Katex text={flipped ? card.back : card.front} /></div>
-      <p class="muted small hint">Click the card to {flipped ? "see the question" : "reveal the answer"}</p>
+    <div class="flashcard-wrap">
+      <div
+        class="card-surface flashcard"
+        class:flipped
+        on:click={toggleCard}
+        on:keydown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            toggleCard();
+          }
+        }}
+        role="button"
+        tabindex="0"
+        aria-label={flipped ? "Show the question" : "Show the answer"}
+      >
+        <p class="face-label muted small">{flipped ? "Answer" : "Question"}</p>
+        <div class="face"><Katex text={flipped ? card.back : card.front} /></div>
+        <p class="muted small hint">Click the card to {flipped ? "see the question" : "reveal the answer"}</p>
+      </div>
+      <label class="memorized-control" title="Mark this card as memorized">
+        <input
+          type="checkbox"
+          checked={card.tags.includes(FINISHED_TAG)}
+          disabled={!!memorizedSavingCardId}
+          on:change={(event) => setMemorized(card, (event.currentTarget as HTMLInputElement).checked)}
+        />
+        <span>Memorized</span>
+      </label>
     </div>
     <button class="card-arrow" on:click={() => moveCard(1)} disabled={visibleCards.length < 2 || editing} aria-label="Next card">&rarr;</button>
   </div>
   <div class="card-meta">
     <span class="muted small">Card {cardIndex + 1} of {visibleCards.length}</span>
     {#if card.source && card.source !== "manual"}<span class="source muted small">{card.source}</span>{/if}
+    <span class="pill difficulty">{card.difficulty}</span>
     {#if card.retired}<span class="pill retired">Retired from Study</span>{/if}
     {#if card.tags.length}<div class="tags">{#each card.tags as tag}<span>{tag}</span>{/each}</div>{/if}
     <button class="edit" on:click={() => startEdit(card)}>Edit card</button>
@@ -195,6 +268,24 @@
   {/if}
 {/if}
 
+{#if quizPromptCard}
+  <div class="prompt-backdrop">
+    <dialog open class="card-surface quiz-prompt" aria-labelledby="quiz-prompt-title">
+      <h2 id="quiz-prompt-title">Use this card in quizzes?</h2>
+      <p class="muted">You updated:</p>
+      <div class="accepted-question"><Katex text={quizPromptCard.front} /></div>
+      <p class="muted">Would you like to include it in multiple-choice and fill-in-the-blank quizzes?</p>
+      {#if quizPromptError}<p class="error">{quizPromptError}</p>{/if}
+      <div class="prompt-actions">
+        <button class="btn btn-primary" on:click={() => chooseQuizPreference(true)} disabled={quizPromptSaving}>
+          {quizPromptSaving ? "Saving…" : "Yes, use in quizzes"}
+        </button>
+        <button class="btn" on:click={() => chooseQuizPreference(false)} disabled={quizPromptSaving}>No, not now</button>
+      </div>
+    </dialog>
+  </div>
+{/if}
+
 <style>
   .back { background: none; border: none; color: var(--text-dim); margin-bottom: 1rem; padding: 0; }
   .back:hover { color: var(--text); }
@@ -210,7 +301,9 @@
   .tags { display: flex; gap: 0.35rem; margin-top: 0.5rem; }
   .tags span { font-size: 0.72rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: var(--surface-2); color: var(--text-dim); }
   .pill.retired { font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--surface-2); color: var(--text-dim); font-weight: 600; }
+  .pill.difficulty { font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--surface-2); color: var(--text-dim); font-weight: 600; text-transform: capitalize; }
   .viewer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; }
+  .flashcard-wrap { position: relative; min-width: 0; }
   .flashcard {
     min-height: 280px;
     padding: 2rem;
@@ -224,6 +317,9 @@
   }
   .flashcard:hover, .flashcard:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
   .flashcard.flipped { background: var(--surface-2); }
+  .memorized-control { position: absolute; top: 0.9rem; right: 0.9rem; display: flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.45rem; border-radius: 6px; background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--text-dim); font-size: 0.75rem; cursor: pointer; }
+  .memorized-control input { margin: 0; accent-color: var(--good); }
+  .memorized-control:has(input:checked) { color: var(--good); }
   .face-label { margin: 0 0 1rem; text-transform: uppercase; letter-spacing: 0.08em; }
   .face { font-size: 1.15rem; font-weight: 600; }
   .hint { margin: 1.5rem 0 0; }
@@ -243,9 +339,16 @@
   .editor textarea, .editor input { width: 100%; }
   .editor-actions { display: flex; gap: 0.6rem; justify-content: flex-end; }
   .empty-state { padding: 2rem; text-align: center; }
+  .prompt-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 1.5rem; background: rgba(11, 14, 20, 0.58); }
+  .quiz-prompt { position: fixed; inset: 0; width: min(calc(100% - 3rem), 460px); height: fit-content; max-height: calc(100vh - 3rem); margin: auto; padding: 1.5rem; overflow: auto; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32); }
+  .quiz-prompt h2 { margin: 0 0 0.65rem; }
+  .quiz-prompt p { line-height: 1.5; }
+  .accepted-question { margin: 0.5rem 0 1rem; padding: 0.8rem; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; background: var(--surface-2); font-weight: 600; }
+  .prompt-actions { display: flex; gap: 0.5rem; margin-top: 0.8rem; }
   @media (max-width: 600px) {
     .viewer { grid-template-columns: 1fr 1fr; }
-    .flashcard { grid-column: 1 / -1; grid-row: 1; min-height: 240px; }
+    .flashcard-wrap { grid-column: 1 / -1; grid-row: 1; }
+    .flashcard { min-height: 240px; }
     .card-arrow:first-child { grid-column: 1; grid-row: 2; justify-self: end; }
     .card-arrow:last-child { grid-column: 2; grid-row: 2; justify-self: start; }
   }

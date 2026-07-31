@@ -5,7 +5,7 @@ import { UnrecoverableError, Worker, type Job } from "bullmq";
 import { redis } from "../redis.js";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
-import { generateCardsFromText, reviewCards } from "../lib/claude.js";
+import { assessCardDifficulties, generateCardsFromText, reviewCards } from "../lib/claude.js";
 import { extractPdfText } from "../lib/gemini.js";
 import { isRetryableAiError } from "../lib/retry.js";
 import { releaseDailyQuota } from "../lib/quota.js";
@@ -121,6 +121,7 @@ async function processImportJob(job: {
           generatedFront: card.front,
           generatedBack: card.back,
           sourceCitation: card.citation,
+          difficulty: card.difficulty,
         },
       })
     ),
@@ -148,12 +149,21 @@ async function processReviewJob(job: { id: string; deckId: string }) {
   const sources = deckSources.map((s) => ({ label: s.label, text: s.extractedText }));
 
   const flags = [];
+  const difficulties = [];
   for (let i = 0; i < cards.length; i += REVIEW_BATCH_SIZE) {
     const batch = cards.slice(i, i + REVIEW_BATCH_SIZE);
-    flags.push(...(await reviewCards(batch, sources)));
+    const [batchFlags, batchDifficulties] = await Promise.all([
+      reviewCards(batch, sources),
+      assessCardDifficulties(batch),
+    ]);
+    flags.push(...batchFlags);
+    difficulties.push(...batchDifficulties);
   }
 
   await prisma.$transaction([
+    ...difficulties.map(({ cardId, difficulty }) =>
+      prisma.card.update({ where: { id: cardId }, data: { difficulty } })
+    ),
     ...flags.map((flag) =>
       prisma.aiDraft.create({
         data: {
@@ -162,6 +172,7 @@ async function processReviewJob(job: { id: string; deckId: string }) {
           generatedBack: flag.back,
           issue: flag.issue,
           originalCardId: flag.cardId,
+          difficulty: flag.difficulty,
         },
       })
     ),

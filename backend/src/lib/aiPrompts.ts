@@ -2,6 +2,14 @@ export interface GeneratedCard {
   front: string;
   back: string;
   citation: string | null;
+  difficulty: CardDifficulty;
+}
+
+export type CardDifficulty = "easy" | "medium" | "hard";
+
+function parseDifficulty(value: unknown): CardDifficulty {
+  const difficulty = String(value ?? "").trim().toLowerCase();
+  return difficulty === "easy" || difficulty === "hard" ? difficulty : "medium";
 }
 
 export const GENERATION_SYSTEM_PROMPT = `You produce flashcards from source text (transcribed lecture slides, or the text of a webpage) for university students.
@@ -15,7 +23,8 @@ Rules:
 - Match the voice and level of detail of the example cards from this deck, if any are given.
 - Keep the front a concise question or prompt; keep the back concise (1-3 sentences, or a short list). Do not pad answers.
 - Preserve mathematical notation using LaTeX, wrapped in $...$ for inline or $$...$$ for block formulae.
-- Respond with ONLY a JSON array of objects: [{"front": string, "back": string, "citation": string}]. No prose, no markdown fences.`;
+- Assign each card a "difficulty": "easy", "medium", or "hard", based on the cognitive demand of answering it for the intended university learner. Easy cards require direct recall of one clear fact or definition; medium cards require explanation, comparison, or applying a familiar idea; hard cards require multi-step reasoning, synthesis, or non-routine application. Use all three labels only when warranted — do not force an even split.
+- Respond with ONLY a JSON array of objects: [{"front": string, "back": string, "citation": string, "difficulty": "easy" | "medium" | "hard"}]. No prose, no markdown fences.`;
 
 export const GRADING_SYSTEM_PROMPT = `You grade a student's typed answer against a flashcard's reference answer.
 
@@ -36,11 +45,22 @@ Flag ONLY cards with a genuine correctness problem:
 
 Never flag a card just because its topic isn't covered by the provided source material, seems unrelated to it, or belongs to a different subject — that is not a correctness issue. Do NOT flag a card just because it could be phrased more elegantly, more concisely, or differently in style either — only flag real knowledge/correctness issues.
 
-For each flagged card, provide: its "index" (matching the number in the list), a one-sentence "issue" explaining what's wrong, and a corrected "front"/"back" pair that fixes it while keeping the same topic and roughly the same length as the original.
+For each flagged card, provide: its "index" (matching the number in the list), a one-sentence "issue" explaining what's wrong, a corrected "front"/"back" pair that fixes it while keeping the same topic and roughly the same length as the original, and a "difficulty" label of "easy", "medium", or "hard" for the corrected card. Easy cards require direct recall of one clear fact or definition; medium cards require explanation, comparison, or applying a familiar idea; hard cards require multi-step reasoning, synthesis, or non-routine application.
 
 Preserve mathematical notation using LaTeX, wrapped in $...$ for inline or $$...$$ for block formulae.
 
-Respond with ONLY a JSON array: [{"index": number, "issue": string, "front": string, "back": string}]. Cards with no issue must NOT appear in the array. If no cards have issues, respond with [].`;
+Respond with ONLY a JSON array: [{"index": number, "issue": string, "front": string, "back": string, "difficulty": "easy" | "medium" | "hard"}]. Cards with no issue must NOT appear in the array. If no cards have issues, respond with [].`;
+
+export const DIFFICULTY_SYSTEM_PROMPT = `You assign an estimated quiz difficulty to university-level flashcards.
+
+For every card supplied, assign exactly one difficulty:
+- "easy": direct recall of one clear fact or definition;
+- "medium": explanation, comparison, or applying a familiar idea;
+- "hard": multi-step reasoning, synthesis, or non-routine application.
+
+Judge only the cognitive demand of answering the card from its question and reference answer, not the learner's individual ability. Do not force an even split across labels.
+
+Respond with ONLY a JSON array: [{"index": number, "difficulty": "easy" | "medium" | "hard"}]. Include every supplied card exactly once. No prose or markdown fences.`;
 
 export function buildGenerationUserPrompt(params: {
   slideText: string;
@@ -69,6 +89,11 @@ export function buildReviewUserPrompt(
     : "";
   const list = cards.map((c, i) => `${i + 1}. Q: ${c.front}\n   A: ${c.back}`).join("\n\n");
   return `${sourceBlock}Review these ${cards.length} flashcards:\n\n${list}`;
+}
+
+export function buildDifficultyUserPrompt(cards: { front: string; back: string }[]): string {
+  const list = cards.map((c, i) => `${i + 1}. Q: ${c.front}\n   A: ${c.back}`).join("\n\n");
+  return `Assign a difficulty to these ${cards.length} flashcards:\n\n${list}`;
 }
 
 export function buildGradingUserPrompt(params: {
@@ -117,6 +142,7 @@ export function parseGeneratedCards(text: string, providerName: string): Generat
       front: String(c.front ?? "").trim(),
       back: String(c.back ?? "").trim(),
       citation: c.citation ? String(c.citation).trim() : null,
+      difficulty: parseDifficulty(c.difficulty),
     }))
     .filter((c) => c.front && c.back);
 }
@@ -126,6 +152,7 @@ export interface ReviewFlag {
   issue: string;
   front: string;
   back: string;
+  difficulty: CardDifficulty;
 }
 
 /** Maps the model's 1-indexed flags back onto the original card ids, dropping anything malformed or out of range. */
@@ -153,9 +180,40 @@ export function parseReviewFlags(
       const back = String(c.back ?? "").trim();
       const issue = String(c.issue ?? "").trim();
       if (!front || !back || !issue) return null;
-      return { cardId: card.id, issue, front, back };
+      return { cardId: card.id, issue, front, back, difficulty: parseDifficulty(c.difficulty) };
     })
     .filter((f): f is ReviewFlag => f !== null);
+}
+
+export interface CardDifficultyAssessment {
+  cardId: string;
+  difficulty: CardDifficulty;
+}
+
+/** Maps the model's 1-indexed difficulty assessments back onto their cards. */
+export function parseCardDifficulties(
+  text: string,
+  providerName: string,
+  cards: { id: string; front: string; back: string }[]
+): CardDifficultyAssessment[] {
+  const start = text.indexOf("[");
+  const end = text.lastIndexOf("]");
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`No JSON array found in ${providerName}'s difficulty assessment.`);
+  }
+
+  const parsed = parseJsonSlice(text, start, end, providerName, "the difficulty assessment");
+  if (!Array.isArray(parsed)) throw new Error("Expected a JSON array of difficulty assessments.");
+
+  const byCardId = new Map<string, CardDifficultyAssessment>();
+  for (const item of parsed) {
+    if (typeof item !== "object" || item === null) continue;
+    const index = Number((item as Record<string, unknown>).index);
+    const card = Number.isInteger(index) ? cards[index - 1] : undefined;
+    if (card) byCardId.set(card.id, { cardId: card.id, difficulty: parseDifficulty((item as Record<string, unknown>).difficulty) });
+  }
+
+  return cards.map((card) => byCardId.get(card.id) ?? { cardId: card.id, difficulty: "medium" });
 }
 
 export function parseGradingResult(

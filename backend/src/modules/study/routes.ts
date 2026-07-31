@@ -83,7 +83,7 @@ export async function studyRoutes(app: FastifyInstance) {
 
     const cards = await prisma.card.findMany({ where: { deckId: deck.id, includeInQuiz: true } });
     if (req.query.mode === "fill") {
-      return reply.send({ questions: shuffle(cards).map((card) => ({ cardId: card.id, front: card.front, back: card.back })) });
+      return reply.send({ questions: shuffle(cards).map((card) => ({ cardId: card.id, front: card.front, back: card.back, difficulty: card.difficulty })) });
     }
     if (cards.length < 4) {
       return reply.send({ questions: [] });
@@ -94,7 +94,7 @@ export async function studyRoutes(app: FastifyInstance) {
         .slice(0, 3)
         .map((c) => c.back);
       const options = shuffle([card.back, ...distractors]);
-      return { cardId: card.id, front: card.front, options, answer: card.back };
+      return { cardId: card.id, front: card.front, options, answer: card.back, difficulty: card.difficulty };
     });
 
     return reply.send({ questions: shuffle(questions) });

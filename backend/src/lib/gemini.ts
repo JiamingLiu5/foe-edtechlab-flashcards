@@ -3,15 +3,19 @@ import { env } from "../env.js";
 import { withRetry } from "./retry.js";
 import {
   GENERATION_SYSTEM_PROMPT,
+  DIFFICULTY_SYSTEM_PROMPT,
   GRADING_SYSTEM_PROMPT,
   REVIEW_SYSTEM_PROMPT,
   buildGenerationUserPrompt,
+  buildDifficultyUserPrompt,
   buildGradingUserPrompt,
   buildReviewUserPrompt,
   parseGeneratedCards,
+  parseCardDifficulties,
   parseGradingResult,
   parseReviewFlags,
   type GeneratedCard,
+  type CardDifficultyAssessment,
   type ReviewFlag,
 } from "./aiPrompts.js";
 
@@ -86,6 +90,19 @@ export async function reviewCards(
   });
 
   return parseReviewFlags(response.text ?? "", "Gemini", cards);
+}
+
+/** Fallback difficulty classification when no Anthropic API key is configured. */
+export async function assessCardDifficulties(
+  cards: { id: string; front: string; back: string }[]
+): Promise<CardDifficultyAssessment[]> {
+  const response = await genai.models.generateContent({
+    model: env.geminiModelGeneration,
+    config: { systemInstruction: DIFFICULTY_SYSTEM_PROMPT },
+    contents: [{ role: "user", parts: [{ text: buildDifficultyUserPrompt(cards) }] }],
+  });
+
+  return parseCardDifficulties(response.text ?? "", "Gemini", cards);
 }
 
 /**

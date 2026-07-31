@@ -99,6 +99,7 @@ model Card {
   tags      String[] @default([])
   source    String?
   includeInQuiz Boolean @default(true)
+  difficulty CardDifficulty @default(medium)
   /// Set via the Study page's "All done" action — excludes the card from future Study sessions until un-retired.
   retired   Boolean  @default(false)
   createdAt DateTime @default(now())
@@ -159,6 +160,13 @@ enum AiDraftStatus {
   discarded
 }
 
+/// An AI-estimated difficulty level used to balance quiz questions.
+enum CardDifficulty {
+  easy
+  medium
+  hard
+}
+
 model AiDraft {
   id              String        @id @default(uuid())
   jobId           String
@@ -168,6 +176,7 @@ model AiDraft {
   editedFront     String?
   editedBack      String?
   sourceCitation  String?
+  difficulty      CardDifficulty @default(medium)
   issue           String?
   originalCardId  String?
   originalCard    Card?         @relation("AiDraftOrigin", fields: [originalCardId], references: [id], onDelete: Cascade)

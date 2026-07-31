@@ -48,10 +48,14 @@ export interface CardDTO {
   tags: string[];
   source: string | null;
   includeInQuiz: boolean;
+  difficulty: CardDifficulty;
   /** Set via the Study page's "All done" action — excluded from future Study sessions until un-retired. */
   retired: boolean;
   createdAt: string;
 }
+
+/** AI-estimated cognitive demand, used to balance future quizzes. */
+export type CardDifficulty = "easy" | "medium" | "hard";
 
 export type GenerationJobStatus =
   | "queued"
@@ -87,6 +91,7 @@ export interface AiDraftDTO {
   editedFront: string | null;
   editedBack: string | null;
   sourceCitation: string | null;
+  difficulty: CardDifficulty;
   /** Set for "review" jobs: what's wrong with the original card. */
   issue: string | null;
   /** Set for "review" jobs: the existing card this draft would overwrite. */

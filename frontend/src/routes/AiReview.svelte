@@ -17,6 +17,7 @@
   let quizPromptCard: CardDTO | null = null;
   let quizPromptSaving = false;
   let quizPromptError = "";
+  let acceptingDraftId = "";
 
   let sources: DeckSourceDTO[] = [];
   let sourcesOpen = false;
@@ -85,19 +86,30 @@
   }
 
   async function accept(draft: AiDraftDTO, edited: boolean) {
-    const { card } = await api.acceptDraft(jobId, draft.id, edited ? { front: editFront, back: editBack } : undefined);
-    editingId = null;
-    if (!isReview) {
-      quizPromptCard = card;
-      quizPromptError = "";
+    if (acceptingDraftId || quizPromptCard) return;
+
+    acceptingDraftId = draft.id;
+    try {
+      const { card } = await api.acceptDraft(jobId, draft.id, edited ? { front: editFront, back: editBack } : undefined);
+      editingId = null;
+      if (!isReview) {
+        // Do not refresh the job yet: keeping the draft visible behind this
+        // choice makes it clear that accepting is not fully complete yet.
+        quizPromptCard = card;
+        quizPromptError = "";
+        return;
+      }
+      await poll();
+    } finally {
+      acceptingDraftId = "";
     }
-    await poll();
   }
 
   async function chooseQuizPreference(includeInQuiz: boolean) {
     if (!quizPromptCard || quizPromptSaving) return;
     if (!includeInQuiz) {
       quizPromptCard = null;
+      await poll();
       return;
     }
 
@@ -111,6 +123,7 @@
         includeInQuiz: true,
       });
       quizPromptCard = null;
+      await poll();
     } catch (error) {
       quizPromptError = error instanceof ApiError ? error.message : "Couldn't update the quiz preference.";
     } finally {
@@ -180,8 +193,10 @@
           <input bind:value={editFront} placeholder="Front" />
           <textarea rows="3" bind:value={editBack} placeholder="Back"></textarea>
           <div class="row">
-            <button class="btn btn-primary" on:click={() => accept(draft, true)}>Save & accept</button>
-            <button class="btn" on:click={() => (editingId = null)}>Cancel</button>
+            <button class="btn btn-primary" on:click={() => accept(draft, true)} disabled={!!acceptingDraftId}>
+              {acceptingDraftId === draft.id ? "Accepting…" : "Save & accept"}
+            </button>
+            <button class="btn" on:click={() => (editingId = null)} disabled={!!acceptingDraftId}>Cancel</button>
           </div>
         {:else}
           <div class="diff">
@@ -195,12 +210,15 @@
             {/if}
             <div class="front"><span class="qa-label">Q</span><Katex text={draft.generatedFront} /></div>
             <div class="back muted"><span class="qa-label">A</span><Katex text={draft.generatedBack} /></div>
+            <div class="difficulty muted small">Quiz difficulty: <strong>{draft.difficulty}</strong></div>
             {#if draft.sourceCitation}<div class="citation">📎 {draft.sourceCitation}</div>{/if}
           </div>
           <div class="row">
-            <button class="btn btn-primary" on:click={() => accept(draft, false)}>{isReview ? "Accept fix" : "Accept"}</button>
-            <button class="btn" on:click={() => startEdit(draft)}>Edit</button>
-            <button class="btn btn-danger" on:click={() => discard(draft)}>{isReview ? "Keep original" : "Discard"}</button>
+            <button class="btn btn-primary" on:click={() => accept(draft, false)} disabled={!!acceptingDraftId}>
+              {acceptingDraftId === draft.id ? "Accepting…" : isReview ? "Accept fix" : "Accept"}
+            </button>
+            <button class="btn" on:click={() => startEdit(draft)} disabled={!!acceptingDraftId}>Edit</button>
+            <button class="btn btn-danger" on:click={() => discard(draft)} disabled={!!acceptingDraftId}>{isReview ? "Keep original" : "Discard"}</button>
           </div>
         {/if}
       </li>
@@ -267,6 +285,7 @@
   .qa-label { display: inline-flex; align-items: center; justify-content: center; width: 1.35rem; height: 1.35rem; margin-right: 0.5rem; border-radius: 999px; background: var(--accent-strong); color: white; font-size: 0.72rem; vertical-align: middle; }
   .back .qa-label { background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border); }
   .citation { margin-top: 0.5rem; font-size: 0.8rem; color: var(--accent); }
+  .difficulty { margin-top: 0.5rem; text-transform: capitalize; }
   .issue { color: var(--warn); font-size: 0.85rem; margin-bottom: 0.6rem; }
   .original { margin-bottom: 0.4rem; }
   .arrow { margin-bottom: 0.4rem; }

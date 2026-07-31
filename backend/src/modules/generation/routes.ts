@@ -30,6 +30,7 @@ function toDTO(job: Awaited<ReturnType<typeof loadJob>>): GenerationJobDTO {
       editedFront: d.editedFront,
       editedBack: d.editedBack,
       sourceCitation: d.sourceCitation,
+      difficulty: d.difficulty,
       issue: d.issue,
       originalCardId: d.originalCardId,
       originalFront: d.originalCard?.front ?? null,
@@ -253,7 +254,7 @@ export async function generationRoutes(app: FastifyInstance) {
 
       const card = await prisma.$transaction(async (tx) => {
         const resulting = draft.originalCardId
-          ? await tx.card.update({ where: { id: draft.originalCardId }, data: { front, back } })
+          ? await tx.card.update({ where: { id: draft.originalCardId }, data: { front, back, difficulty: draft.difficulty } })
           : await tx.card.create({
               data: {
                 deckId: draft.job.deckId,
@@ -261,9 +262,10 @@ export async function generationRoutes(app: FastifyInstance) {
                 back,
                 source: draft.sourceCitation ? `AI · ${draft.sourceCitation}` : "AI",
                 // Ask the owner whether to include new AI cards in quizzes
-                // immediately after acceptance; manual and existing cards keep
-                // the schema default of true.
+                // immediately after acceptance; existing cards retain their
+                // current preference.
                 includeInQuiz: false,
+                difficulty: draft.difficulty,
               },
             });
         await tx.aiDraft.update({
