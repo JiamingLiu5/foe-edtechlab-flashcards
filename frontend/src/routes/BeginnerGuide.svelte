@@ -1,121 +1,206 @@
 <script lang="ts">
   import { navigate } from "../lib/router";
+
+  type Step = 1 | 2 | 3 | 4 | 5 | 6;
+  type Source = "manual" | "paste" | "pdf" | "link";
+  type PracticeMode = "study" | "quiz" | "self-check";
+  type DraftStatus = "pending" | "editing" | "accepted" | "discarded";
+
+  const steps: { id: Step; label: string }[] = [
+    { id: 1, label: "Sign in" },
+    { id: 2, label: "Create deck" },
+    { id: 3, label: "Choose source" },
+    { id: 4, label: "Generate" },
+    { id: 5, label: "Review" },
+    { id: 6, label: "Practise" },
+  ];
+
+  const sourceDetails: Record<Source, { label: string; text: string }> = {
+    manual: { label: "Create a card", text: "Write a question and answer yourself. You can also add tags to organise the card." },
+    paste: { label: "Paste cards", text: "Paste any bulk block of study text. No tabs, pipes, or special formatting are needed." },
+    pdf: { label: "From PDF", text: "Upload lecture slides or another PDF, then choose the maximum number of draft cards." },
+    link: { label: "From link", text: "Paste a public webpage URL, then choose the maximum number of draft cards." },
+  };
+
+  const practiceDetails: Record<PracticeMode, { label: string; text: string }> = {
+    study: { label: "Study", text: "Flip each card, reveal the answer, then choose Again, Hard, Good, or Easy to schedule its next review." },
+    quiz: { label: "Quiz", text: "Choose multiple choice, fill-in-the-blank, or a mixed quiz. Results appear together at the end." },
+    "self-check": { label: "Self-check", text: "Write an answer in your own words and receive AI feedback, missing points, and a reference answer." },
+  };
+
+  let step: Step = 1;
+  let source: Source = "paste";
+  let practiceMode: PracticeMode = "study";
+  let draftStatus: DraftStatus = "pending";
+  let editedDraft = "What is active recall?";
+
+  function goToStep(nextStep: Step) {
+    step = nextStep;
+  }
+
+  function nextStep() {
+    if (step < 6) step = (step + 1) as Step;
+  }
+
+  function previousStep() {
+    if (step > 1) step = (step - 1) as Step;
+  }
+
+  function restart() {
+    step = 1;
+    source = "paste";
+    practiceMode = "study";
+    draftStatus = "pending";
+    editedDraft = "What is active recall?";
+  }
 </script>
 
 <div class="guide-heading">
   <div>
     <h1>Beginner guide</h1>
-    <p class="muted">Follow this flow whenever you start a new topic.</p>
+    <p class="muted">Work through the flow one step at a time.</p>
   </div>
-  <button class="btn btn-primary" on:click={() => navigate("/decks")}>Go to my decks</button>
+  <span class="progress-label">Step {step} of {steps.length}</span>
 </div>
 
-<div class="flow card-surface" aria-label="Getting started flow">
-  <div class="flow-item"><span>1</span>Sign in</div>
-  <div class="arrow" aria-hidden="true">→</div>
-  <div class="flow-item"><span>2</span>Create deck</div>
-  <div class="arrow" aria-hidden="true">→</div>
-  <div class="flow-item"><span>3–5</span>Add, generate & review</div>
-  <div class="arrow" aria-hidden="true">→</div>
-  <div class="flow-item"><span>6</span>Choose a mode</div>
-</div>
+<nav class="progress card-surface" aria-label="Guide progress">
+  {#each steps as guideStep, index}
+    <button
+      class="progress-step"
+      class:active={guideStep.id === step}
+      class:complete={guideStep.id < step}
+      aria-current={guideStep.id === step ? "step" : undefined}
+      on:click={() => goToStep(guideStep.id)}
+    >
+      <span>{guideStep.id}</span>
+      {guideStep.label}
+    </button>
+    {#if index < steps.length - 1}<span class="connector" aria-hidden="true">→</span>{/if}
+  {/each}
+</nav>
 
-<ol class="steps">
-  <li class="card-surface step">
-    <span class="step-number">1</span>
-    <div>
-      <h2>Sign in</h2>
-      <p>Sign in with your university account. You will arrive at <strong>Your decks</strong>.</p>
+<section class="card-surface lesson" aria-live="polite">
+  {#if step === 1}
+    <p class="eyebrow">Step 1</p>
+    <h2>Sign in</h2>
+    <p>You are signed in and ready to begin. Your deck library is where all of your revision topics live.</p>
+    <button class="btn" on:click={() => navigate("/decks")}>Open my decks</button>
+  {:else if step === 2}
+    <p class="eyebrow">Step 2</p>
+    <h2>Create a deck</h2>
+    <p>Start with one topic. On <strong>Your decks</strong>, enter a clear name such as “Week 3: Cell biology” and select <strong>Create deck</strong>.</p>
+    <button class="btn" on:click={() => navigate("/decks")}>Create a deck</button>
+  {:else if step === 3}
+    <p class="eyebrow">Step 3</p>
+    <h2>Choose a source</h2>
+    <p>Select <strong>Add cards</strong> inside your deck, then choose the source that suits your material. Try the options below.</p>
+    <div class="choice-grid" role="group" aria-label="Card source options">
+      {#each Object.entries(sourceDetails) as [key, detail]}
+        <button class="choice" class:selected={source === key} aria-pressed={source === key} on:click={() => (source = key as Source)}>{detail.label}</button>
+      {/each}
     </div>
-  </li>
-  <li class="card-surface step">
-    <span class="step-number">2</span>
-    <div>
-      <h2>Create a deck</h2>
-      <p>Enter a descriptive name for your topic, such as “Week 3: Cell biology”, then choose <strong>Create deck</strong>.</p>
-    </div>
-  </li>
-  <li class="card-surface step">
-    <span class="step-number">3</span>
-    <div>
-      <h2>Choose a source</h2>
-      <p>Select <strong>Add cards</strong> in the deck, then choose one route:</p>
-      <ul>
-        <li><strong>Create a card</strong> to write a question and answer yourself.</li>
-        <li><strong>Paste cards</strong> to paste a bulk block of study text; no tabs or special formatting are needed.</li>
-        <li><strong>From PDF</strong> or <strong>From link</strong> to use lecture slides or a public webpage.</li>
-      </ul>
-    </div>
-  </li>
-  <li class="card-surface step">
-    <span class="step-number">4</span>
-    <div>
-      <h2>Generate cards</h2>
-      <p>For pasted text, PDFs, and links, set the maximum number of cards and choose <strong>Draft cards with AI</strong>. Manual cards are created directly.</p>
-    </div>
-  </li>
-  <li class="card-surface step">
-    <span class="step-number">5</span>
-    <div>
-      <h2>Review your cards</h2>
-      <p>Check every AI draft. You can <strong>Edit</strong>, <strong>Accept</strong>, or <strong>Discard</strong> it. When accepting a card, choose whether to include it in quizzes.</p>
-      <p class="muted small">You can also use <strong>AI review</strong> later to check an existing deck for possible factual or clarity issues.</p>
-    </div>
-  </li>
-  <li class="card-surface step">
-    <span class="step-number">6</span>
-    <div>
-      <h2>Choose how to practise</h2>
-      <div class="mode-grid">
-        <div>
-          <h3>Study</h3>
-          <p>Flip cards, then record how well you remembered them. Cards return according to your Study settings.</p>
-        </div>
-        <div>
-          <h3>Quiz</h3>
-          <p>Choose multiple choice, fill-in-the-blank, or a mixed quiz. Results and feedback appear together after the quiz.</p>
-        </div>
-        <div>
-          <h3>Self-check</h3>
-          <p>Write an answer in your own words and receive AI feedback against the reference answer.</p>
-        </div>
+    <div class="selection"><strong>{sourceDetails[source].label}</strong><p>{sourceDetails[source].text}</p></div>
+  {:else if step === 4}
+    <p class="eyebrow">Step 4</p>
+    <h2>Generate cards</h2>
+    {#if source === "manual"}
+      <p>Manual cards are created directly. Complete the question and answer, then select <strong>Add card</strong>.</p>
+    {:else}
+      <p>Set the maximum number of cards to draft, then select <strong>Draft cards with AI</strong>. AI prepares drafts from your {sourceDetails[source].label.toLowerCase()} source.</p>
+      <p class="muted">Nothing is added to your deck yet—you review every draft first.</p>
+    {/if}
+  {:else if step === 5}
+    <p class="eyebrow">Step 5</p>
+    <h2>Review your cards</h2>
+    <p>AI-generated cards arrive as drafts. Try the review controls on this example before continuing.</p>
+    <div class="draft-example" class:resolved={draftStatus === "accepted" || draftStatus === "discarded"}>
+      {#if draftStatus === "editing"}
+        <label>
+          <span class="muted small">Question</span>
+          <input bind:value={editedDraft} />
+        </label>
+      {:else}
+        <strong>{editedDraft}</strong>
+      {/if}
+      <p class="muted">Using retrieval to actively recall information strengthens learning.</p>
+      {#if draftStatus === "accepted"}<p class="status good">Accepted — you can now choose whether to use this card in quizzes.</p>{/if}
+      {#if draftStatus === "discarded"}<p class="status">Discarded — it will not be added to the deck.</p>{/if}
+      <div class="draft-actions">
+        {#if draftStatus === "editing"}
+          <button class="btn btn-primary" on:click={() => (draftStatus = "pending")}>Save edit</button>
+        {:else if draftStatus === "pending"}
+          <button class="btn btn-primary" on:click={() => (draftStatus = "accepted")}>Accept</button>
+          <button class="btn" on:click={() => (draftStatus = "editing")}>Edit</button>
+          <button class="btn btn-danger" on:click={() => (draftStatus = "discarded")}>Discard</button>
+        {:else}
+          <button class="btn" on:click={() => (draftStatus = "pending")}>Try again</button>
+        {/if}
       </div>
     </div>
-  </li>
-</ol>
+    <p class="muted small">You can also run <strong>AI review</strong> later to check an existing deck for potential factual or clarity issues.</p>
+  {:else}
+    <p class="eyebrow">Step 6</p>
+    <h2>Choose how to practise</h2>
+    <p>Pick a mode for the kind of revision you want to do today.</p>
+    <div class="choice-grid" role="group" aria-label="Practice modes">
+      {#each Object.entries(practiceDetails) as [key, detail]}
+        <button class="choice" class:selected={practiceMode === key} aria-pressed={practiceMode === key} on:click={() => (practiceMode = key as PracticeMode)}>{detail.label}</button>
+      {/each}
+    </div>
+    <div class="selection"><strong>{practiceDetails[practiceMode].label}</strong><p>{practiceDetails[practiceMode].text}</p></div>
+  {/if}
 
-<section class="card-surface tip">
-  <h2>Then repeat</h2>
-  <p>Return to Study, Quiz, or Self-check whenever you revise. Add or edit cards as your understanding develops, and use tags and difficulty to keep the deck organised.</p>
+  <div class="lesson-actions">
+    <button class="btn" on:click={previousStep} disabled={step === 1}>Back</button>
+    {#if step < 6}
+      <button class="btn btn-primary" on:click={nextStep}>Next: {steps[step].label}</button>
+    {:else}
+      <button class="btn" on:click={restart}>Start guide again</button>
+      <button class="btn btn-primary" on:click={() => navigate("/decks")}>Go to my decks</button>
+    {/if}
+  </div>
 </section>
 
 <style>
   .guide-heading { display: flex; justify-content: space-between; align-items: start; gap: 1rem; margin-bottom: 1.25rem; }
   .guide-heading h1 { margin: 0; }
   .guide-heading p { margin: 0.4rem 0 0; }
-  .flow { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 1rem; margin-bottom: 1.25rem; overflow-x: auto; }
-  .flow-item { display: grid; gap: 0.3rem; min-width: 8.5rem; color: var(--text-dim); font-size: 0.82rem; font-weight: 600; text-align: center; }
-  .flow-item span { color: var(--accent); font-size: 0.72rem; text-transform: uppercase; }
-  .arrow { color: var(--accent); font-size: 1.25rem; }
-  .steps { display: grid; gap: 0.8rem; margin: 0; padding: 0; list-style: none; }
-  .step { display: grid; grid-template-columns: auto 1fr; gap: 1rem; padding: 1.15rem; }
-  .step-number { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 999px; background: color-mix(in srgb, var(--accent) 18%, var(--surface-2)); color: var(--accent); font-weight: 700; }
-  .step h2, .tip h2 { margin: 0; font-size: 1.05rem; }
-  .step h3 { margin: 0; font-size: 0.95rem; }
-  .step p { margin: 0.45rem 0 0; line-height: 1.5; }
-  .step ul { margin: 0.55rem 0 0; padding-left: 1.2rem; }
-  .step li { margin-top: 0.35rem; line-height: 1.45; }
-  .mode-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.65rem; margin-top: 0.8rem; }
-  .mode-grid > div { padding: 0.75rem; border-radius: 8px; background: var(--surface-2); }
-  .mode-grid p { font-size: 0.88rem; }
+  .progress-label { color: var(--accent); font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
+  .progress { display: flex; align-items: center; justify-content: space-between; gap: 0.45rem; padding: 0.7rem; margin-bottom: 1.25rem; overflow-x: auto; }
+  .progress-step { display: grid; justify-items: center; gap: 0.2rem; min-width: 6.6rem; border: 0; border-radius: 8px; padding: 0.45rem; background: transparent; color: var(--text-dim); font-size: 0.76rem; font-weight: 600; }
+  .progress-step span { display: grid; place-items: center; width: 1.35rem; height: 1.35rem; border-radius: 999px; background: var(--surface-2); font-size: 0.72rem; }
+  .progress-step:hover { color: var(--text); background: var(--surface-2); }
+  .progress-step.complete { color: var(--accent); }
+  .progress-step.complete span, .progress-step.active span { background: color-mix(in srgb, var(--accent) 20%, var(--surface-2)); color: var(--accent); }
+  .progress-step.active { background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--text); }
+  .connector { flex: 0 0 auto; color: var(--accent); }
+  .lesson { max-width: 700px; margin: 0 auto; padding: 1.5rem; }
+  .lesson h2 { margin: 0; }
+  .lesson > p { line-height: 1.55; }
+  .eyebrow { margin: 0 0 0.35rem; color: var(--accent); font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+  .choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; margin: 1rem 0; }
+  .choice { min-height: 3rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text); font-weight: 600; }
+  .choice:hover, .choice.selected { border-color: var(--accent); }
+  .choice.selected { background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); color: var(--accent); }
+  .selection { padding: 0.9rem; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; background: var(--surface-2); }
+  .selection p { margin: 0.35rem 0 0; line-height: 1.45; }
+  .draft-example { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+  .draft-example.resolved { opacity: 0.8; }
+  .draft-example label { display: grid; gap: 0.35rem; }
+  .draft-example input { width: 100%; }
+  .draft-example p { margin: 0.45rem 0 0; line-height: 1.45; }
+  .status { color: var(--text-dim); font-size: 0.9rem; }
+  .status.good { color: var(--good); }
+  .draft-actions, .lesson-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+  .draft-actions { margin-top: 0.9rem; }
+  .lesson-actions { justify-content: space-between; margin-top: 1.75rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+  .lesson-actions .btn-primary { margin-left: auto; }
   .small { font-size: 0.85rem; }
-  .tip { margin-top: 1.25rem; padding: 1.15rem; border-left: 3px solid var(--accent); }
-  .tip p { margin: 0.5rem 0 0; line-height: 1.5; }
   @media (max-width: 650px) {
     .guide-heading { align-items: stretch; flex-direction: column; }
-    .guide-heading .btn { align-self: start; }
-    .flow { justify-content: start; }
-    .arrow { flex: 0 0 auto; }
-    .mode-grid { grid-template-columns: 1fr; }
+    .progress { justify-content: start; }
+    .connector { display: none; }
+    .progress-step { min-width: 5.6rem; }
+    .choice-grid { grid-template-columns: 1fr; }
   }
 </style>

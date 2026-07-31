@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import type { AdminUserDTO, DeckSummaryDTO, QuotaBucket, QuotaBucketDTO } from "@flashcards/shared";
   import { api, ApiError } from "../lib/api";
   import { navigate } from "../lib/router";
@@ -14,10 +13,10 @@
   let quotaBuckets: QuotaBucketDTO[] = [];
   let quotaLoading = true;
   let quotaError = "";
+  let quotaSuccess = "";
   let quotaBusy = "";
-  // Svelte binds <input type="number"> values as numbers (or undefined while
-  // empty), so keep this state numeric instead of treating it as text.
-  let overrideInputs: Record<string, number | undefined> = {};
+  let overrideInputs: Record<string, string> = {};
+  let loadedUserId = "";
 
   async function load() {
     loading = true;
@@ -36,10 +35,11 @@
   async function loadQuota() {
     quotaLoading = true;
     quotaError = "";
+    quotaSuccess = "";
     try {
       const res = await api.adminGetUserQuota(userId);
       quotaBuckets = res.buckets;
-      overrideInputs = Object.fromEntries(res.buckets.map((b) => [b.bucket, b.limit]));
+      overrideInputs = Object.fromEntries(res.buckets.map((b) => [b.bucket, String(b.limit)]));
     } catch (e) {
       quotaError = e instanceof ApiError ? e.message : "Failed to load quota.";
     } finally {
@@ -50,9 +50,11 @@
   async function resetQuota(bucket: QuotaBucket) {
     quotaBusy = bucket;
     quotaError = "";
+    quotaSuccess = "";
     try {
       await api.adminResetQuota(userId, bucket);
-      await loadQuota();
+      quotaBuckets = quotaBuckets.map((item) => item.bucket === bucket ? { ...item, used: 0 } : item);
+      quotaSuccess = "Usage reset.";
     } catch (e) {
       quotaError = e instanceof ApiError ? e.message : "Failed to reset quota.";
     } finally {
@@ -61,17 +63,25 @@
   }
 
   async function saveOverride(bucket: QuotaBucket) {
-    const dailyLimit = overrideInputs[bucket];
+    const raw = overrideInputs[bucket]?.trim();
+    const dailyLimit = raw === "" || raw === undefined ? NaN : Number(raw);
     if (!Number.isInteger(dailyLimit) || dailyLimit < 0) {
       quotaError = "Enter a non-negative whole number.";
+      quotaSuccess = "";
       return;
     }
 
     quotaBusy = bucket;
     quotaError = "";
+    quotaSuccess = "";
     try {
       await api.adminSetQuotaOverride(userId, bucket, dailyLimit);
-      await loadQuota();
+      quotaBuckets = quotaBuckets.map((item) => item.bucket === bucket
+        ? { ...item, limit: dailyLimit, overridden: true }
+        : item
+      );
+      overrideInputs = { ...overrideInputs, [bucket]: String(dailyLimit) };
+      quotaSuccess = "Limit saved.";
     } catch (e) {
       quotaError = e instanceof ApiError ? e.message : "Failed to update quota.";
     } finally {
@@ -82,9 +92,16 @@
   async function clearOverride(bucket: QuotaBucket) {
     quotaBusy = bucket;
     quotaError = "";
+    quotaSuccess = "";
     try {
       await api.adminSetQuotaOverride(userId, bucket, null);
-      await loadQuota();
+      const defaultLimit = quotaBuckets.find((item) => item.bucket === bucket)?.defaultLimit;
+      quotaBuckets = quotaBuckets.map((item) => item.bucket === bucket
+        ? { ...item, limit: item.defaultLimit, overridden: false }
+        : item
+      );
+      overrideInputs = { ...overrideInputs, [bucket]: String(defaultLimit ?? "") };
+      quotaSuccess = "Default limit restored.";
     } catch (e) {
       quotaError = e instanceof ApiError ? e.message : "Failed to update quota.";
     } finally {
@@ -92,11 +109,16 @@
     }
   }
 
-  onMount(() => {
+  function updateOverrideInput(bucket: QuotaBucket, event: Event) {
+    overrideInputs = { ...overrideInputs, [bucket]: (event.currentTarget as HTMLInputElement).value };
+    quotaSuccess = "";
+  }
+
+  $: if (userId && userId !== loadedUserId) {
+    loadedUserId = userId;
     load();
     loadQuota();
-  });
-  $: userId, load(), loadQuota();
+  }
 </script>
 
 <button class="back" on:click={() => navigate("/admin")}>&larr; All users</button>
@@ -111,6 +133,7 @@
 <div class="quota card-surface">
   <h2>Usage limits</h2>
   {#if quotaError}<p class="error">{quotaError}</p>{/if}
+  {#if quotaSuccess}<p class="success">{quotaSuccess}</p>{/if}
   {#if quotaLoading}
     <p class="muted">Loading…</p>
   {:else}
@@ -145,7 +168,8 @@
                   type="number"
                   min="0"
                   step="1"
-                  bind:value={overrideInputs[b.bucket]}
+                  value={overrideInputs[b.bucket] ?? ""}
+                  on:input={(event) => updateOverrideInput(b.bucket, event)}
                   disabled={quotaBusy === b.bucket}
                 />
               </td>
@@ -190,6 +214,7 @@
   .back:hover { color: var(--text); }
   .header { margin-bottom: 1rem; }
   .error { color: var(--bad); margin-bottom: 1rem; }
+  .success { color: var(--good); margin-bottom: 1rem; }
   .quota { padding: 1.1rem; margin-bottom: 1.5rem; }
   .quota h2 { margin: 0 0 0.75rem; font-size: 1.05rem; }
   .table-wrap { overflow-x: auto; }
