@@ -150,15 +150,23 @@
   }
 
   function choose(option: string) {
-    if (currentAnswer.selected) return;
     saveAnswer(index, { selected: option });
   }
 
   function next() {
-    typedAnswer = "";
-    fillError = "";
-    index += 1;
+    moveToQuestion(index + 1);
     if (index >= questionCount) finishQuiz();
+  }
+
+  function previous() {
+    if (index > 0) moveToQuestion(index - 1);
+  }
+
+  function moveToQuestion(nextIndex: number) {
+    index = nextIndex;
+    const nextQuestion = configuredQuestions[nextIndex];
+    typedAnswer = nextQuestion?.kind === "fill" ? answers[nextIndex]?.typedAnswer ?? "" : "";
+    fillError = "";
   }
 
   async function submitFillAnswer() {
@@ -327,14 +335,16 @@
           <button
             class="option"
             class:selected={currentAnswer.selected === option}
-            disabled={!!currentAnswer.selected}
             on:click={() => choose(option)}
           >
             <Katex text={option} />
           </button>
         {/each}
       </div>
-      {#if currentAnswer.selected}<button class="btn btn-primary next" on:click={next}>{index + 1 === questionCount ? "Finish quiz" : "Next question"}</button>{/if}
+      <div class="question-actions">
+        <button class="btn" on:click={previous} disabled={index === 0}>Previous question</button>
+        {#if currentAnswer.selected}<button class="btn btn-primary" on:click={next}>{index + 1 === questionCount ? "Finish quiz" : "Next question"}</button>{/if}
+      </div>
     </div>
   {:else if currentQuestion?.kind === "fill"}
     {@const q = currentQuestion}
@@ -347,7 +357,10 @@
       <label for="fill-answer" class="muted small">Your answer</label>
       <textarea id="fill-answer" rows="4" bind:value={typedAnswer} disabled={checking} placeholder="Type your answer…"></textarea>
       {#if fillError}<p class="error">{fillError}</p>{/if}
-      <button class="btn btn-primary next" type="submit" disabled={!typedAnswer.trim() || checking}>{checking ? "Saving answer…" : index + 1 === questionCount ? "Submit quiz" : "Save & next"}</button>
+      <div class="question-actions">
+        <button class="btn" type="button" on:click={previous} disabled={index === 0 || checking}>Previous question</button>
+        <button class="btn btn-primary" type="submit" disabled={!typedAnswer.trim() || checking}>{checking ? "Saving answer…" : index + 1 === questionCount ? "Submit quiz" : "Save & next"}</button>
+      </div>
     </form>
   {/if}
 {/if}
@@ -384,7 +397,7 @@
   .options { display: flex; flex-direction: column; gap: 0.55rem; }
   .option { text-align: left; padding: 0.7rem 0.9rem; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
   .option.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface-2)); }
-  .next { margin-top: 1.25rem; }
+  .question-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.25rem; }
   .done { padding: 2rem; text-align: center; }
   textarea { width: 100%; margin-top: 0.4rem; }
   .missing { color: var(--text-dim); }
