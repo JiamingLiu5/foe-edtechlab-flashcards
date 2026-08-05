@@ -18,6 +18,10 @@
   import AdminDeckDetail from "./routes/AdminDeckDetail.svelte";
   import Settings from "./routes/Settings.svelte";
   import BeginnerGuide from "./routes/BeginnerGuide.svelte";
+  import TeacherDashboard from "./routes/TeacherDashboard.svelte";
+  import TeacherClassroom from "./routes/TeacherClassroom.svelte";
+  import Classwork from "./routes/Classwork.svelte";
+  import ClassroomQuiz from "./routes/ClassroomQuiz.svelte";
   import OnboardingTour from "./lib/OnboardingTour.svelte";
 
   type TourIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
@@ -26,7 +30,7 @@
   const tourSteps = [
     { target: "create-deck", title: "Create your first deck", description: "Give your topic a clear name, then select Create deck. The guide will continue when your new deck opens.", continueLabel: "" },
     { target: "add-cards", title: "Add material to the deck", description: "Select Add cards to write cards yourself or turn your study material into draft cards.", continueLabel: "" },
-    { target: "choose-source", title: "Choose a source", description: "Choose Create a card, Paste cards, From PDF, or From link. Use the real controls, then continue when you are ready.", continueLabel: "I chose a source" },
+    { target: "choose-source", title: "Choose source(s)", description: "Choose Create a card, Paste cards, From PDF, or From link. You can return after reviewing drafts to add further materials to the same deck.", continueLabel: "I chose a source" },
     { target: "generate-cards", title: "Create or generate cards", description: "Add a manual card, or set a maximum and draft cards with AI. AI drafts are always reviewed before entering your deck.", continueLabel: "I've added or drafted cards" },
     { target: "review-drafts", title: "Review each draft", description: "Check the question and answer against your notes. Use Edit to correct wording, Accept to add it to the deck, or Discard to leave it out.", continueLabel: "I've reviewed my cards" },
     { target: "self-check-mode", title: "Open Self-check", description: "Select Self-check to practise explaining an answer without prompts or answer options. The guide will continue on the Self-check screen.", continueLabel: "" },
@@ -36,7 +40,7 @@
     { target: "quiz-mode", title: "Open Quiz", description: "Select Quiz to test recall in a set of questions. The guide will show the available formats next.", continueLabel: "" },
     { target: "quiz-format", title: "Choose a quiz format", description: "Multiple choice gives four options. Fill-in-the-blank collects written answers and grades each one before final results. Mix combines both formats. Select the format you want to practise.", continueLabel: "" },
     { target: "quiz-setup", title: "Configure your quiz", description: "Set the total number of questions, filter by difficulty, reserve any hard questions, and optionally add a timer. Leave Preview ticked to check the generated questions and adjust their points before starting.", continueLabel: "" },
-    { target: "quiz-preview-actions", title: "Review questions and points", description: "Read the generated questions above and adjust each point value if needed. Select Start quiz when the set is ready, or Back to setup to change the filters.", continueLabel: "" },
+    { target: "quiz-preview-start", title: "Review questions and points", description: "Read the generated questions above and adjust each point value if needed. Select Start quiz when the set is ready, or Back to setup to change the filters.", continueLabel: "" },
     { target: "quiz-question", title: "Answer every question", description: "Choose one option for multiple-choice or write and save an answer for fill-in-the-blank. Your correctness and AI feedback stay hidden until the complete quiz is finished.", continueLabel: "" },
     { target: "quiz-results", title: "Review your results", description: "See your total points, every answer, the correct answer, and AI feedback for written responses. Use Configure another quiz to practise again with a new set.", continueLabel: "Finish guide" },
   ];
@@ -55,6 +59,8 @@
   $: authChecked = $currentUser !== undefined;
   $: isLoggedIn = !!$currentUser;
   $: isAdmin = $currentUser?.role === "admin";
+  $: isTeacher = $currentUser?.role === "teacher";
+  $: isStudent = $currentUser?.role === "student";
 
   $: deckIdParams = matchRoute("/decks/:id", path);
   $: addCardsParams = matchRoute("/decks/:id/add-cards", path);
@@ -64,12 +70,17 @@
   $: quizParams = matchRoute("/decks/:id/quiz", path);
   $: quizModeParams = matchRoute("/decks/:id/quiz/:mode", path);
   $: selfCheckParams = matchRoute("/decks/:id/selfcheck", path);
+  $: classroomParams = matchRoute("/classrooms/:id", path);
+  $: assignedQuizParams = matchRoute("/assigned-quizzes/:id", path);
   $: adminUserDeckParams = matchRoute("/admin/users/:id/decks/:deckId", path);
   $: adminUserDecksParams = matchRoute("/admin/users/:id/decks", path);
   $: isAdminRoute = path === "/admin";
   $: isSettingsRoute = path === "/settings";
   $: isGuideRoute = path === "/guide";
+  $: isTeacherRoute = path === "/teacher";
+  $: isClassworkRoute = path === "/classwork";
   $: isLibrary = path === "/decks" || path === "/" || path === "/login" || path === "";
+  $: if (isTeacher && (path === "/" || path === "")) navigate("/teacher");
   $: if (tourIndex === 0 && deckIdParams) tourIndex = 1;
   $: if (tourIndex === 1 && addCardsParams) tourIndex = 2;
   $: if (tourIndex === 3 && reviewParams) tourIndex = 4;
@@ -80,7 +91,7 @@
   $: if (addCardsParams?.id) tourDeckId = addCardsParams.id;
   $: if (reviewParams?.id) tourDeckId = reviewParams.id;
   $: activeTourStep = tourIndex === null ? null : tourSteps[tourIndex];
-  $: if (tourReady && isLoggedIn && !autoTourChecked) {
+  $: if (tourReady && isStudent && !autoTourChecked) {
     autoTourChecked = true;
     if (!localStorage.getItem(TOUR_STORAGE_KEY)) startTour();
   }
@@ -91,8 +102,12 @@
     navigate("/login");
   }
 
+  function home() {
+    navigate(isTeacher ? "/teacher" : "/decks");
+  }
+
   function startTour() {
-    if (!tourReady || !isLoggedIn) return;
+    if (!tourReady || !isStudent) return;
     tourIndex = 0;
     navigate("/decks");
   }
@@ -142,10 +157,16 @@
 {:else}
   <div class="shell">
     <header class="topbar">
-      <button class="brand" on:click={() => navigate("/decks")}>Flashcards</button>
+      <button class="brand" on:click={home}>Flashcards</button>
       <div class="spacer"></div>
-      <button class="btn" on:click={startTour}>Beginner guide</button>
-      <button class="btn" on:click={() => navigate("/settings")}>Study settings</button>
+      {#if isTeacher}
+        <button class="btn" on:click={() => navigate("/teacher")}>Classrooms</button>
+        <button class="btn" on:click={() => navigate("/decks")}>Quiz decks</button>
+      {:else if isStudent}
+        <button class="btn" on:click={() => navigate("/classwork")}>Classwork</button>
+        <button class="btn" on:click={startTour}>Beginner guide</button>
+        <button class="btn" on:click={() => navigate("/settings")}>Study settings</button>
+      {/if}
       {#if isAdmin}
         <button class="btn" on:click={() => navigate("/admin")}>Admin</button>
       {/if}
@@ -153,7 +174,15 @@
       <button class="btn" on:click={logout}>Sign out</button>
     </header>
     <main>
-      {#if isSettingsRoute}
+      {#if isTeacherRoute && isTeacher}
+        <TeacherDashboard />
+      {:else if classroomParams && isTeacher}
+        <TeacherClassroom classroomId={classroomParams.id} />
+      {:else if isClassworkRoute && isStudent}
+        <Classwork />
+      {:else if assignedQuizParams && isStudent}
+        <ClassroomQuiz quizId={assignedQuizParams.id} />
+      {:else if isSettingsRoute}
         <Settings />
       {:else if isGuideRoute}
         <BeginnerGuide />
@@ -210,7 +239,8 @@
   .topbar {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
     padding: 0.75rem 1.5rem;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
@@ -230,5 +260,10 @@
     max-width: 960px;
     width: 100%;
     margin: 0 auto;
+  }
+  @media (max-width: 640px) {
+    .topbar { padding: 0.75rem 1rem; }
+    .spacer { flex-basis: 100%; height: 0; }
+    main { padding: 1rem; }
   }
 </style>

@@ -1,10 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import Database from "better-sqlite3";
 import { ZipArchive } from "archiver";
-import { createHash, randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { PassThrough } from "node:stream";
 import { prisma } from "../../db.js";
 import { requireUser } from "../auth/plugin.js";
@@ -36,13 +33,13 @@ function checksum(text: string): number {
   return Number.parseInt(createHash("sha1").update(text).digest("hex").slice(0, 8), 16);
 }
 
-async function zipApkg(sqlitePath: string): Promise<Buffer> {
+async function zipApkg(collectionData: Buffer): Promise<Buffer> {
   const output = new PassThrough();
   const chunks: Buffer[] = [];
   output.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
   const archive = new ZipArchive({ zlib: { level: 9 } });
   archive.pipe(output);
-  archive.file(sqlitePath, { name: "collection.anki2" });
+  archive.append(collectionData, { name: "collection.anki2" });
   archive.append("{}", { name: "media" });
   const completed = new Promise<Buffer>((resolve, reject) => {
     output.on("end", () => resolve(Buffer.concat(chunks)));
@@ -62,8 +59,7 @@ export async function exportRoutes(app: FastifyInstance) {
     if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
     const cards = await prisma.card.findMany({ where: { deckId: deck.id }, orderBy: { createdAt: "asc" } });
 
-    const path = join(tmpdir(), `flashcards-${randomUUID()}.anki2`);
-    const db = new Database(path);
+    const db = new Database(":memory:");
     try {
       db.exec(SCHEMA);
       const now = unixSeconds();
@@ -97,8 +93,9 @@ export async function exportRoutes(app: FastifyInstance) {
           addCard.run(cardId, noteId, deckId, 0, now, -1, 0, 0, index + 1, 0, 0, 0, 0, 0, 0, 0, 0, "");
         });
       })();
+      const collectionData = db.serialize();
       db.close();
-      const apkg = await zipApkg(path);
+      const apkg = await zipApkg(collectionData);
       const filename = deck.name.replace(/[^a-z0-9-_]+/gi, "_") || "deck";
       return reply
         .header("Content-Type", "application/vnd.anki")
@@ -106,7 +103,6 @@ export async function exportRoutes(app: FastifyInstance) {
         .send(apkg);
     } finally {
       if (db.open) db.close();
-      await fs.unlink(path).catch(() => undefined);
     }
   });
 }

@@ -9,7 +9,7 @@
   const steps: { id: Step; label: string }[] = [
     { id: 1, label: "Sign in" },
     { id: 2, label: "Create deck" },
-    { id: 3, label: "Choose source" },
+    { id: 3, label: "Choose source(s)" },
     { id: 4, label: "Generate" },
     { id: 5, label: "Review" },
     { id: 6, label: "Practise" },
@@ -88,12 +88,12 @@
   {:else if step === 2}
     <p class="eyebrow">Step 2</p>
     <h2>Create a deck</h2>
-    <p>Start with one topic. On <strong>Your decks</strong>, enter a clear name such as “Week 3: Cell biology” and select <strong>Create deck</strong>.</p>
+    <p>Start with one topic. On <strong>Your decks</strong>, enter a clear name such as “Week 3: Cell biology”. If a matching deck appears, select it to open it; otherwise select <strong>Create deck</strong>.</p>
     <button class="btn" on:click={() => navigate("/decks")}>Create a deck</button>
   {:else if step === 3}
     <p class="eyebrow">Step 3</p>
-    <h2>Choose a source</h2>
-    <p>Select <strong>Add cards</strong> inside your deck, then choose the source that suits your material. Try the options below.</p>
+    <h2>Choose source(s)</h2>
+    <p>Select <strong>Add cards</strong> inside your deck, then choose the source that suits your material. You can return after reviewing drafts to add more material from the same or related topics.</p>
     <div class="choice-grid" role="group" aria-label="Card source options">
       {#each Object.entries(sourceDetails) as [key, detail]}
         <button class="choice" class:selected={source === key} aria-pressed={source === key} on:click={() => (source = key as Source)}>{detail.label}</button>

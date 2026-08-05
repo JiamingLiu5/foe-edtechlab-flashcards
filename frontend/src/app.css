@@ -56,6 +56,8 @@ input, textarea, select {
   font-size: 0.9rem;
 }
 .btn:hover { border-color: var(--accent); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:disabled:hover { border-color: var(--border); }
 .btn-primary {
   background: var(--accent-strong);
   border-color: var(--accent-strong);

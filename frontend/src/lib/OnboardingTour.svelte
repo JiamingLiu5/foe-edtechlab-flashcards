@@ -58,7 +58,12 @@
     const tooltipHeight = popover?.offsetHeight ?? 300;
     const spaceBelow = window.innerHeight - rect.bottom - 16;
     const spaceAbove = rect.top - 16;
-    placement = spaceBelow >= tooltipHeight || spaceBelow >= spaceAbove ? "below" : "above";
+    // Prefer the area below the control when it fits. That keeps a coachmark
+    // for bottom action buttons from obscuring the content the student is
+    // meant to review above it.
+    placement = spaceBelow >= tooltipHeight || (spaceBelow >= 220 && spaceBelow >= spaceAbove * 0.65)
+      ? "below"
+      : "above";
     top = placement === "below"
       ? Math.min(rect.bottom + 16, window.innerHeight - tooltipHeight - 16)
       : Math.max(16, rect.top - tooltipHeight - 16);

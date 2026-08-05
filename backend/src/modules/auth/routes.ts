@@ -19,9 +19,10 @@ function matchesSecret(provided: string, expected: string): boolean {
 }
 
 export async function authRoutes(app: FastifyInstance) {
-  app.post<{ Body: { email: string; password: string } }>("/api/auth/signup", async (req, reply) => {
+  app.post<{ Body: { email: string; password: string; role?: "student" | "teacher" } }>("/api/auth/signup", async (req, reply) => {
     const email = req.body?.email?.trim().toLowerCase();
     const password = req.body?.password ?? "";
+    const role = req.body?.role ?? "student";
 
     if (!email || !isAllowedEmail(email)) {
       return reply.code(400).send({
@@ -35,6 +36,9 @@ export async function authRoutes(app: FastifyInstance) {
         message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
       });
     }
+    if (role !== "student" && role !== "teacher") {
+      return reply.code(400).send({ error: "invalid_role", message: "Choose either a student or teacher account." });
+    }
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -42,7 +46,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const passwordHash = await hashPassword(password);
-    await prisma.user.create({ data: { email, passwordHash, status: "pending" } });
+    await prisma.user.create({ data: { email, passwordHash, role, status: "pending" } });
 
     return reply.send({
       pending: true,
@@ -103,7 +107,7 @@ export async function authRoutes(app: FastifyInstance) {
     const user = await prisma.user.upsert({
       where: { email: env.testLoginEmail },
       update: {},
-      create: { email: env.testLoginEmail, passwordHash: await hashPassword(crypto.randomBytes(32).toString("hex")) },
+      create: { email: env.testLoginEmail, passwordHash: await hashPassword(crypto.randomBytes(32).toString("hex")), role: "student" },
     });
 
     const session = signSession({ userId: user.id, email: user.email });

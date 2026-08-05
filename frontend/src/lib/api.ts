@@ -4,6 +4,11 @@ import type {
   AiDraftDTO,
   CardDTO,
   CardDifficulty,
+  ClassroomQuizAttemptDTO,
+  ClassroomQuizDTO,
+  ClassroomSummaryDTO,
+  ClassroomMemberDTO,
+  QuizSubmissionDTO,
   DeckSourceDTO,
   DeckSummaryDTO,
   DueCardDTO,
@@ -41,8 +46,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export { ApiError };
 
 export const api = {
-  signup: (email: string, password: string) =>
-    request<SignupResponseDTO>("/auth/signup", { method: "POST", body: JSON.stringify({ email, password }) }),
+  signup: (email: string, password: string, role: "student" | "teacher") =>
+    request<SignupResponseDTO>("/auth/signup", { method: "POST", body: JSON.stringify({ email, password, role }) }),
   login: (email: string, password: string) =>
     request<{ user: UserDTO }>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   me: () => request<{ user: UserDTO }>("/auth/me"),
@@ -69,6 +74,21 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ dailyLimit }),
     }),
+
+  listTeacherClassrooms: () => request<{ classrooms: ClassroomSummaryDTO[] }>("/classrooms"),
+  createClassroom: (name: string) => request<{ classroom: ClassroomSummaryDTO }>("/classrooms", { method: "POST", body: JSON.stringify({ name }) }),
+  getTeacherClassroom: (id: string) => request<{ classroom: ClassroomSummaryDTO; members: ClassroomMemberDTO[]; quizzes: ClassroomQuizDTO[] }>(`/classrooms/${id}`),
+  createClassroomQuiz: (classroomId: string, deckId: string, title: string, questionCount: number) =>
+    request<{ quiz: ClassroomQuizDTO }>(`/classrooms/${classroomId}/quizzes`, {
+      method: "POST", body: JSON.stringify({ deckId, title, questionCount }),
+    }),
+  classroomQuizScores: (classroomId: string, quizId: string) =>
+    request<{ quiz: ClassroomQuizDTO; scores: QuizSubmissionDTO[] }>(`/classrooms/${classroomId}/quizzes/${quizId}/scores`),
+  joinClassroom: (joinCode: string) => request<{ classroom: ClassroomSummaryDTO }>("/classrooms/join", { method: "POST", body: JSON.stringify({ joinCode }) }),
+  listClassroomAssignments: () => request<{ quizzes: ClassroomQuizDTO[] }>("/classroom-quizzes"),
+  getClassroomQuiz: (id: string) => request<ClassroomQuizAttemptDTO>(`/classroom-quizzes/${id}`),
+  submitClassroomQuiz: (id: string, answers: { questionId: string; selected: string | null }[]) =>
+    request<{ submission: QuizSubmissionDTO }>(`/classroom-quizzes/${id}/submit`, { method: "POST", body: JSON.stringify({ answers }) }),
 
   listDecks: () => request<{ decks: DeckSummaryDTO[] }>("/decks"),
   createDeck: (name: string) => request<{ deck: DeckSummaryDTO }>("/decks", { method: "POST", body: JSON.stringify({ name }) }),
@@ -139,4 +159,4 @@ export const api = {
   exportAnkiUrl: (deckId: string) => `/api/decks/${deckId}/export/anki`,
 };
 
-export type { AdminUserDTO, AiDraftDTO, CardDTO, DeckSourceDTO, DeckSummaryDTO, GenerationJobDTO, UserDTO };
+export type { AdminUserDTO, AiDraftDTO, CardDTO, DeckSourceDTO, DeckSummaryDTO, GenerationJobDTO, UserDTO, ClassroomQuizDTO, ClassroomSummaryDTO };

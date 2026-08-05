@@ -3,11 +3,21 @@
   import type { DeckSummaryDTO } from "@flashcards/shared";
   import { api } from "../lib/api";
   import { navigate } from "../lib/router";
+  import { currentUser } from "../lib/auth";
 
   let decks: DeckSummaryDTO[] = [];
   let loading = true;
   let newDeckName = "";
   let creating = false;
+
+  $: matchingDecks = newDeckName.trim()
+    ? decks.filter((deck) => deck.name.toLocaleLowerCase().includes(newDeckName.trim().toLocaleLowerCase()))
+    : [];
+
+  function openDeck(deck: DeckSummaryDTO) {
+    newDeckName = "";
+    navigate(`/decks/${deck.id}`);
+  }
 
   async function load() {
     loading = true;
@@ -19,6 +29,13 @@
   async function createDeck() {
     const name = newDeckName.trim();
     if (!name) return;
+
+    // Pressing Enter on an exact existing name should never accidentally make a duplicate deck.
+    const existing = decks.find((deck) => deck.name.localeCompare(name, undefined, { sensitivity: "accent" }) === 0);
+    if (existing) {
+      openDeck(existing);
+      return;
+    }
     creating = true;
     try {
       const { deck } = await api.createDeck(name);
@@ -40,12 +57,31 @@
 </script>
 
 <div class="header">
-  <h1>Your decks</h1>
+  <h1>{$currentUser?.role === "teacher" ? "Your quiz decks" : "Your decks"}</h1>
 </div>
 
 <form class="new-deck card-surface" data-tour-target="create-deck" on:submit|preventDefault={createDeck}>
-  <input placeholder="New deck name…" bind:value={newDeckName} />
-  <button class="btn btn-primary" type="submit" disabled={creating}>Create deck</button>
+  <label class="deck-picker">
+    <span class="sr-only">Deck name</span>
+    <input
+      placeholder="Type a deck name…"
+      bind:value={newDeckName}
+      aria-describedby="deck-picker-help"
+      autocomplete="off"
+    />
+    {#if matchingDecks.length > 0}
+      <div class="matches" aria-label="Existing matching decks">
+        <p>Open an existing deck</p>
+        {#each matchingDecks as deck (deck.id)}
+          <button type="button" on:click={() => openDeck(deck)}>{deck.name}</button>
+        {/each}
+      </div>
+    {/if}
+  </label>
+  <button class="btn btn-primary" type="submit" disabled={creating || !newDeckName.trim()}>
+    {creating ? "Creating…" : "Create deck"}
+  </button>
+  <p id="deck-picker-help" class="muted small">Choose a matching deck to open it, or create a new one if it is not listed.</p>
 </form>
 
 {#if loading}
@@ -79,12 +115,31 @@
 <style>
   .header { margin-bottom: 1rem; }
   .new-deck {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.6rem;
     padding: 1rem;
     margin-bottom: 1.5rem;
   }
-  .new-deck input { flex: 1; }
+  .deck-picker { position: relative; min-width: 0; }
+  .deck-picker input { width: 100%; }
+  .new-deck .small { grid-column: 1 / -1; margin: 0; }
+  .matches {
+    position: absolute;
+    z-index: 2;
+    top: calc(100% + 0.35rem);
+    left: 0;
+    right: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--surface);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+  }
+  .matches p { margin: 0; padding: 0.55rem 0.75rem 0.35rem; color: var(--text-dim); font-size: 0.78rem; }
+  .matches button { display: block; width: 100%; border: 0; padding: 0.65rem 0.75rem; background: transparent; color: var(--text); text-align: left; }
+  .matches button:hover, .matches button:focus-visible { background: var(--surface-2); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

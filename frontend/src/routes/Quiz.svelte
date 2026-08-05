@@ -289,9 +289,9 @@
         </li>
       {/each}
     </ol>
-    <div class="preview-actions" data-tour-target="quiz-preview-actions">
+    <div class="preview-actions">
       <button class="btn" on:click={restartSetup}>Back to setup</button>
-      <button class="btn btn-primary" on:click={startQuiz}>Start quiz</button>
+      <button class="btn btn-primary" data-tour-target="quiz-preview-start" on:click={startQuiz}>Start quiz</button>
     </div>
   {:else if stage === "done" || quizFinished}
     <div class="card-surface done" data-tour-target="quiz-results">

@@ -2,7 +2,7 @@
 // Hand-maintained DTOs, not Prisma entities directly — keeps the wire shape
 // stable even if internal storage columns change.
 
-export type UserRole = "user" | "admin";
+export type UserRole = "student" | "teacher" | "admin";
 export type UserStatus = "pending" | "approved" | "rejected" | "deactivated";
 
 export interface UserDTO {
@@ -134,6 +134,7 @@ export interface SelfCheckGradeDTO {
 export interface SignupRequestDTO {
   email: string;
   password: string;
+  role: "student" | "teacher";
 }
 
 export interface SignupResponseDTO {
@@ -166,4 +167,52 @@ export interface QuotaBucketDTO {
 
 export interface AdminUserQuotaDTO {
   buckets: QuotaBucketDTO[];
+}
+
+export interface ClassroomSummaryDTO {
+  id: string;
+  name: string;
+  joinCode: string;
+  createdAt: string;
+  studentCount: number;
+  quizCount: number;
+}
+
+export interface ClassroomMemberDTO {
+  id: string;
+  email: string;
+  displayName: string | null;
+  joinedAt: string;
+}
+
+export interface ClassroomQuizDTO {
+  id: string;
+  classroomId: string;
+  classroomName?: string;
+  title: string;
+  createdAt: string;
+  questionCount: number;
+  submission: QuizSubmissionDTO | null;
+}
+
+export interface QuizSubmissionDTO {
+  studentId: string;
+  studentEmail?: string;
+  studentDisplayName?: string | null;
+  score: number;
+  totalPoints: number;
+  submittedAt: string;
+}
+
+export interface ClassroomQuizQuestionDTO {
+  id: string;
+  prompt: string;
+  options: string[];
+  points: number;
+}
+
+export interface ClassroomQuizAttemptDTO {
+  quiz: Omit<ClassroomQuizDTO, "submission">;
+  questions: ClassroomQuizQuestionDTO[];
+  submission: QuizSubmissionDTO | null;
 }

@@ -109,7 +109,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const user = await prisma.user.update({
       where: { id: req.params.id },
-      data: { role: "user" },
+      data: { role: "student" },
     });
     return reply.send({ user: toAdminUserDTO(user) });
   });

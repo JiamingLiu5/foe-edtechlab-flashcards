@@ -14,6 +14,7 @@ import { generationRoutes } from "./modules/generation/routes.js";
 import { studyRoutes } from "./modules/study/routes.js";
 import { selfCheckRoutes } from "./modules/selfCheck/routes.js";
 import { exportRoutes } from "./modules/export/routes.js";
+import { classroomRoutes } from "./modules/classrooms/routes.js";
 
 const app = Fastify({
   logger: env.nodeEnv === "development" ? { transport: { target: "pino-pretty" } } : true,
@@ -37,6 +38,7 @@ await app.register(generationRoutes);
 await app.register(studyRoutes);
 await app.register(selfCheckRoutes);
 await app.register(exportRoutes);
+await app.register(classroomRoutes);
 
 app.listen({ port: env.port, host: "0.0.0.0" }).catch((err) => {
   app.log.error(err);

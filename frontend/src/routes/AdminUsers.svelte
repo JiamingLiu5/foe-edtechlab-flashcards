@@ -93,7 +93,7 @@
               {:else if user.status === "approved" && user.id !== $currentUser?.id}
                 <button class="btn" disabled={busyId === user.id} on:click={() => act(user.id, api.adminDeactivate)}>Deactivate</button>
               {/if}
-              {#if user.role === "user" && user.status === "approved"}
+              {#if user.role !== "admin" && user.status === "approved"}
                 <button class="btn" disabled={busyId === user.id} on:click={() => act(user.id, api.adminPromote)}>Make admin</button>
               {:else if user.role === "admin" && user.id !== $currentUser?.id}
                 <button class="btn" disabled={busyId === user.id} on:click={() => act(user.id, api.adminDemote)}>Remove admin</button>
@@ -125,7 +125,7 @@
     font-weight: 600;
   }
   .role-admin { background: rgba(110, 168, 254, 0.18); color: var(--accent); }
-  .role-user { background: var(--surface-2); color: var(--text-dim); }
+  .role-student, .role-teacher { background: var(--surface-2); color: var(--text-dim); }
   .status-pending { background: rgba(251, 191, 36, 0.18); color: var(--warn); }
   .status-approved { background: rgba(74, 222, 128, 0.18); color: var(--good); }
   .status-rejected, .status-deactivated { background: rgba(248, 113, 113, 0.18); color: var(--bad); }

@@ -6,6 +6,7 @@
   let mode: "login" | "signup" = "login";
   let email = "";
   let password = "";
+  let role: "student" | "teacher" = "student";
   let error = "";
   let info = "";
   let loading = false;
@@ -18,9 +19,9 @@
       if (mode === "login") {
         const { user } = await api.login(email.trim(), password);
         currentUser.set(user);
-        navigate("/decks");
+        navigate(user.role === "teacher" ? "/teacher" : "/decks");
       } else {
-        const res = await api.signup(email.trim(), password);
+        const res = await api.signup(email.trim(), password, role);
         info = res.message;
         mode = "login";
         password = "";
@@ -54,6 +55,15 @@
         required
         autocomplete="email"
       />
+      {#if mode === "signup"}
+        <label class="role-select">
+          <span>I am a</span>
+          <select bind:value={role}>
+            <option value="student">Student</option>
+            <option value="teacher">Teacher</option>
+          </select>
+        </label>
+      {/if}
       <input
         type="password"
         placeholder="Password"
@@ -104,4 +114,5 @@
     padding: 0;
     text-decoration: underline;
   }
+  .role-select { display: grid; gap: 0.35rem; color: var(--text-dim); font-size: 0.9rem; }
 </style>

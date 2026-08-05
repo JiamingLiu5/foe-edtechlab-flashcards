@@ -9,7 +9,8 @@ datasource db {
 }
 
 enum UserRole {
-  user
+  student
+  teacher
   admin
 }
 
@@ -25,7 +26,7 @@ model User {
   email        String     @unique
   passwordHash String
   displayName  String?
-  role         UserRole   @default(user)
+  role         UserRole   @default(student)
   status       UserStatus @default(approved)
   createdAt    DateTime   @default(now())
 
@@ -39,8 +40,81 @@ model User {
   reviews        Review[]
   jobsCreated    GenerationJob[]
   quotaOverrides QuotaOverride[]
+  classroomsTaught Classroom[] @relation("ClassroomTeacher")
+  classroomMemberships ClassroomMember[]
+  quizSubmissions QuizSubmission[]
 
   @@map("users")
+}
+
+model Classroom {
+  id        String   @id @default(uuid())
+  teacherId String
+  teacher   User     @relation("ClassroomTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  name      String
+  joinCode  String   @unique
+  createdAt DateTime @default(now())
+
+  members ClassroomMember[]
+  quizzes  ClassroomQuiz[]
+
+  @@map("classrooms")
+  @@index([teacherId])
+}
+
+model ClassroomMember {
+  classroomId String
+  studentId   String
+  joinedAt    DateTime @default(now())
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  student     User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([classroomId, studentId])
+  @@map("classroom_members")
+  @@index([studentId])
+}
+
+model ClassroomQuiz {
+  id          String   @id @default(uuid())
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  title       String
+  createdAt   DateTime @default(now())
+
+  questions   ClassroomQuizQuestion[]
+  submissions QuizSubmission[]
+
+  @@map("classroom_quizzes")
+  @@index([classroomId])
+}
+
+model ClassroomQuizQuestion {
+  id        String         @id @default(uuid())
+  quizId    String
+  quiz      ClassroomQuiz  @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  position  Int
+  prompt    String
+  answer    String
+  options   String[]
+  points    Float          @default(1)
+
+  @@map("classroom_quiz_questions")
+  @@unique([quizId, position])
+}
+
+model QuizSubmission {
+  id         String         @id @default(uuid())
+  quizId     String
+  quiz       ClassroomQuiz  @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    User           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  score      Float
+  totalPoints Float
+  submittedAt DateTime      @default(now())
+
+  @@map("quiz_submissions")
+  @@unique([quizId, studentId])
+  @@index([studentId])
 }
 
 /// Per-user override of a daily AI-usage quota bucket ("generation" | "grading" | "deck_review"),

@@ -14,6 +14,8 @@
   let nextDueAt: string | null = null;
   let intervalPreviews: Record<ReviewOutcome, number> = { again: 0, hard: 360, good: 720, easy: 1440 };
   let retiring = false;
+  /** Due count when the session started — a fixed denominator for the progress readout, not a live recount. */
+  let totalDue: number | null = null;
 
   /** Renders a minutes count (a Study interval) as "now" / "Xh" / "Xd". */
   function formatMinutes(minutes: number): string {
@@ -39,6 +41,11 @@
     await loadNext();
   }
 
+  // Cards reviewed as "again" can come straight back into the queue, so the running
+  // count can exceed the session's starting total — widen the denominator rather than
+  // show a numerator past its total.
+  $: displayTotal = totalDue === null ? null : Math.max(totalDue, reviewedCount + 1);
+
   async function retire() {
     if (!card || retiring) return;
     retiring = true;
@@ -50,7 +57,11 @@
     }
   }
 
-  onMount(loadNext);
+  onMount(async () => {
+    const { decks } = await api.listDecks();
+    totalDue = decks.find((deck) => deck.id === deckId)?.dueCount ?? null;
+    await loadNext();
+  });
 </script>
 
 <div class="topline">
@@ -69,6 +80,9 @@
   </div>
 {:else if card}
   <div class="study-session" data-tour-target="study-session">
+    {#if displayTotal}
+      <span class="muted small progress">Card {reviewedCount + 1} of {displayTotal}</span>
+    {/if}
     <div
       class="card-surface flashcard"
       on:click={() => (flipped = !flipped)}
@@ -117,4 +131,5 @@
   .all-done { border-color: var(--text-dim); }
   .empty { padding: 2rem; text-align: center; }
   .small { font-size: 0.8rem; }
+  .progress { display: block; text-align: center; margin-bottom: 0.5rem; }
 </style>

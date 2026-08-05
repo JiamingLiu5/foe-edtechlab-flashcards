@@ -117,6 +117,10 @@
 
 <h1>Add cards</h1>
 <p class="muted">Create cards yourself, or ask AI to draft reviewable cards from pasted text, a PDF, or a public webpage.</p>
+<div class="source-note card-surface">
+  <strong>Building a deck from several materials?</strong>
+  <p class="muted small">Add one source, review its draft cards, then return here to add another. A deck can combine materials from the same topic or related topics.</p>
+</div>
 
 <div class="tabs" data-tour-target="choose-source">
   <button class="tab" class:active={mode === "manual"} on:click={() => selectMode("manual")}>Create a card</button>
@@ -136,7 +140,7 @@
   </form>
 {:else if mode === "paste"}
   <form class="manual-form card-surface" data-tour-target="generate-cards" on:submit|preventDefault={generateFromPastedText}>
-    <p class="muted small">Paste any amount of study notes, lecture text, or other source material. No special formatting is needed — AI will draft cards for you to review before adding them.</p>
+    <p class="muted small">Paste one or more blocks of study notes, lecture text, or other source material. No special formatting is needed — AI will draft cards for you to review before adding them.</p>
     <textarea rows="9" placeholder="Paste your study text here…" bind:value={pastedText} disabled={uploading}></textarea>
     <label class="card-count">
       <span>Maximum cards to draft</span>
@@ -223,6 +227,8 @@
   .back { background: none; border: none; color: var(--text-dim); margin-bottom: 1rem; padding: 0; }
   .back:hover { color: var(--text); }
   .tabs { display: flex; gap: 0.5rem; margin: 1rem 0 1.25rem; }
+  .source-note { margin: 1rem 0; padding: 0.8rem 1rem; }
+  .source-note p { margin: 0.35rem 0 0; }
   .tab {
     border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
     background: color-mix(in srgb, var(--accent) 8%, var(--surface));

@@ -6,7 +6,7 @@ import { sessionCookie, verifySession } from "./session.js";
 export interface AuthenticatedUser {
   userId: string;
   email: string;
-  role: "user" | "admin";
+  role: "student" | "teacher" | "admin";
 }
 
 declare module "fastify" {
@@ -50,6 +50,26 @@ export function requireAdmin(req: FastifyRequest, reply: FastifyReply): Authenti
   if (!user) return null;
   if (user.role !== "admin") {
     reply.code(403).send({ error: "forbidden", message: "Admin access required." });
+    return null;
+  }
+  return user;
+}
+
+export function requireTeacher(req: FastifyRequest, reply: FastifyReply): AuthenticatedUser | null {
+  const user = requireUser(req, reply);
+  if (!user) return null;
+  if (user.role !== "teacher") {
+    reply.code(403).send({ error: "forbidden", message: "Teacher access required." });
+    return null;
+  }
+  return user;
+}
+
+export function requireStudent(req: FastifyRequest, reply: FastifyReply): AuthenticatedUser | null {
+  const user = requireUser(req, reply);
+  if (!user) return null;
+  if (user.role !== "student") {
+    reply.code(403).send({ error: "forbidden", message: "Student access required." });
     return null;
   }
   return user;
