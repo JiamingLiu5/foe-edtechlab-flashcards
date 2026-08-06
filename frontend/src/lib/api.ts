@@ -20,6 +20,7 @@ import type {
   SignupResponseDTO,
   StudySettingsDTO,
   UserDTO,
+  UserRole,
 } from "@flashcards/shared";
 
 class ApiError extends Error {
@@ -58,8 +59,8 @@ export const api = {
   adminReject: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/reject`, { method: "POST" }),
   adminDeactivate: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/deactivate`, { method: "POST" }),
   adminReactivate: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/reactivate`, { method: "POST" }),
-  adminPromote: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/promote`, { method: "POST" }),
-  adminDemote: (id: string) => request<{ user: AdminUserDTO }>(`/admin/users/${id}/demote`, { method: "POST" }),
+  adminSetRole: (id: string, role: UserRole) =>
+    request<{ user: AdminUserDTO }>(`/admin/users/${id}/role`, { method: "PUT", body: JSON.stringify({ role }) }),
   adminRemoveUser: (id: string) => request<{ ok: true }>(`/admin/users/${id}`, { method: "DELETE" }),
   adminListUserDecks: (id: string) => request<{ user: AdminUserDTO; decks: DeckSummaryDTO[] }>(`/admin/users/${id}/decks`),
   adminListDeckCards: (deckId: string) =>
@@ -157,6 +158,7 @@ export const api = {
   },
 
   exportAnkiUrl: (deckId: string) => `/api/decks/${deckId}/export/anki`,
+  exportJsonUrl: (deckId: string) => `/api/decks/${deckId}/export/json`,
 };
 
 export type { AdminUserDTO, AiDraftDTO, CardDTO, DeckSourceDTO, DeckSummaryDTO, GenerationJobDTO, UserDTO, ClassroomQuizDTO, ClassroomSummaryDTO };

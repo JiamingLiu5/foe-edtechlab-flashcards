@@ -5,22 +5,26 @@ import { withRetry } from "./retry.js";
 import {
   GENERATION_SYSTEM_PROMPT,
   DIFFICULTY_SYSTEM_PROMPT,
+  DISTRACTOR_SYSTEM_PROMPT,
   GRADING_SYSTEM_PROMPT,
   REVIEW_SYSTEM_PROMPT,
   buildGenerationUserPrompt,
   buildDifficultyUserPrompt,
+  buildDistractorUserPrompt,
   buildGradingUserPrompt,
   buildReviewUserPrompt,
   parseGeneratedCards,
   parseCardDifficulties,
+  parseDistractors,
   parseGradingResult,
   parseReviewFlags,
   type GeneratedCard,
   type CardDifficultyAssessment,
+  type CardDistractors,
   type ReviewFlag,
 } from "./aiPrompts.js";
 
-export type { CardDifficultyAssessment, GeneratedCard, ReviewFlag };
+export type { CardDifficultyAssessment, CardDistractors, GeneratedCard, ReviewFlag };
 
 export const anthropic = new Anthropic({ apiKey: env.anthropicApiKey });
 
@@ -102,6 +106,30 @@ export async function assessCardDifficulties(
       .join("\n");
 
     return parseCardDifficulties(text, "Claude", cards);
+  });
+}
+
+export async function generateDistractors(
+  cards: { id: string; front: string; back: string }[]
+): Promise<CardDistractors[]> {
+  return withRetry(async () => {
+    if (usingGemini) {
+      return gemini.generateDistractors(cards);
+    }
+
+    const message = await anthropic.messages.create({
+      model: env.anthropicModelGeneration,
+      max_tokens: 4096,
+      system: DISTRACTOR_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: buildDistractorUserPrompt(cards) }],
+    });
+
+    const text = message.content
+      .filter((block) => block.type === "text")
+      .map((block) => (block as { text: string }).text)
+      .join("\n");
+
+    return parseDistractors(text, "Claude", cards);
   });
 }
 

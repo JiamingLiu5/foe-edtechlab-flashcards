@@ -30,11 +30,18 @@
   let difficultySavingCardId = "";
   let difficultyError = "";
 
+  const DIFFICULTY_FILTER_PREFIX = "diff:";
+  const DIFFICULTY_OPTIONS: CardDifficulty[] = ["easy", "medium", "hard"];
+
   $: allTags = [...new Set(cards.flatMap((card) => card.tags))].sort();
   $: visibleCards = cards.filter((card) => {
     const query = search.trim().toLowerCase();
+    const matchesFilter = !tagFilter
+      || (tagFilter.startsWith(DIFFICULTY_FILTER_PREFIX)
+        ? card.difficulty === tagFilter.slice(DIFFICULTY_FILTER_PREFIX.length)
+        : card.tags.includes(tagFilter));
     return (!query || card.front.toLowerCase().includes(query) || card.back.toLowerCase().includes(query))
-      && (!tagFilter || card.tags.includes(tagFilter));
+      && matchesFilter;
   });
   $: if (cardIndex >= visibleCards.length) {
     cardIndex = 0;
@@ -201,6 +208,7 @@
   <button class="btn" data-tour-target="quiz-mode" on:click={() => navigate(`/decks/${deckId}/quiz`)}>Quiz</button>
   <button class="btn" data-tour-target="self-check-mode" on:click={() => navigate(`/decks/${deckId}/selfcheck`)}>Self-check</button>
   <a class="btn" href={api.exportAnkiUrl(deckId)}>Export (Anki)</a>
+  <a class="btn" href={api.exportJsonUrl(deckId)}>Export (JSON)</a>
 </div>
 
 {#if reviewError}<p class="error">{reviewError}</p>{/if}
@@ -211,7 +219,16 @@
   <input type="search" placeholder="Search questions and answers…" bind:value={search} />
   <select bind:value={tagFilter} aria-label="Filter by tag">
     <option value="">All tags</option>
-    {#each allTags as tag}<option value={tag}>{tag}</option>{/each}
+    <optgroup label="Difficulty">
+      {#each DIFFICULTY_OPTIONS as difficulty}
+        <option value={`${DIFFICULTY_FILTER_PREFIX}${difficulty}`}>{difficulty[0].toUpperCase() + difficulty.slice(1)}</option>
+      {/each}
+    </optgroup>
+    {#if allTags.length}
+      <optgroup label="Tags">
+        {#each allTags as tag}<option value={tag}>{tag}</option>{/each}
+      </optgroup>
+    {/if}
   </select>
 </div>
 

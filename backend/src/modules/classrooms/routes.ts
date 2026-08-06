@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../db.js";
 import { requireStudent, requireTeacher } from "../auth/plugin.js";
+import { ensureCardDistractors } from "../../lib/distractors.js";
 import type {
   ClassroomMemberDTO,
   ClassroomQuizDTO,
@@ -16,6 +17,14 @@ function shuffle<T>(items: T[]): T[] {
     [result[index], result[other]] = [result[other], result[index]];
   }
   return result;
+}
+
+/** Tops up AI distractors with other cards' answers when the AI didn't supply (or wasn't asked for) enough. */
+function topUpDistractors(distractors: string[], card: { id: string; back: string }, allCards: { id: string; back: string }[]): string[] {
+  if (distractors.length >= 3) return distractors.slice(0, 3);
+  const exclude = new Set([card.back, ...distractors]);
+  const filler = shuffle(allCards.filter((c) => c.id !== card.id && !exclude.has(c.back))).map((c) => c.back);
+  return [...distractors, ...filler].slice(0, 3);
 }
 
 function newJoinCode(): string {
@@ -150,13 +159,14 @@ export async function classroomRoutes(app: FastifyInstance) {
 
     const selected = shuffle(deck.cards).slice(0, count);
     const title = req.body?.title?.trim() || `${deck.name} quiz`;
+    const aiDistractors = await ensureCardDistractors(teacher.userId, deck.cards);
     const quiz = await prisma.classroomQuiz.create({
       data: {
         classroomId: classroom.id, title,
         questions: {
           create: selected.map((card, position) => ({
             position, prompt: card.front, answer: card.back,
-            options: shuffle([card.back, ...shuffle(deck.cards.filter((other) => other.id !== card.id)).slice(0, 3).map((other) => other.back)]),
+            options: shuffle([card.back, ...topUpDistractors(aiDistractors.get(card.id) ?? [], card, deck.cards)]),
           })),
         },
       },

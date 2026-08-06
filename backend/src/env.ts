@@ -32,6 +32,7 @@ export const env = {
   dailyGenerationQuota: Number(process.env.MAX_GENERATION_JOBS_PER_DAY ?? process.env.DAILY_GENERATION_QUOTA ?? 5),
   dailyGradingQuota: Number(process.env.MAX_GRADING_JOBS_PER_DAY ?? process.env.DAILY_GRADING_QUOTA ?? 50),
   dailyDeckReviewQuota: Number(process.env.DAILY_DECK_REVIEW_QUOTA ?? 5),
+  dailyDistractorQuota: Number(process.env.DAILY_DISTRACTOR_QUOTA ?? 20),
   maxUrlFetchBytes: Number(process.env.MAX_URL_FETCH_MB ?? 5) * 1024 * 1024,
   testLoginSecret: process.env.TEST_LOGIN_SECRET ?? "",
   testLoginEmail: process.env.TEST_LOGIN_EMAIL ?? "",

@@ -51,6 +51,34 @@ async function zipApkg(collectionData: Buffer): Promise<Buffer> {
 }
 
 export async function exportRoutes(app: FastifyInstance) {
+  app.get<{ Params: { id: string } }>("/api/decks/:id/export/json", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+
+    const deck = await prisma.deck.findFirst({ where: { id: req.params.id, ownerId: user.userId } });
+    if (!deck) return reply.code(404).send({ error: "not_found", message: "Deck not found." });
+    const cards = await prisma.card.findMany({ where: { deckId: deck.id }, orderBy: { createdAt: "asc" } });
+
+    const document = {
+      format: "flashcards-native",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      deck: { name: deck.name },
+      cards: cards.map((card) => ({
+        front: card.front,
+        back: card.back,
+        tags: card.tags,
+        difficulty: card.difficulty,
+      })),
+    };
+
+    const filename = deck.name.replace(/[^a-z0-9-_]+/gi, "_") || "deck";
+    return reply
+      .header("Content-Type", "application/json")
+      .header("Content-Disposition", `attachment; filename="${filename}.flashcards.json"`)
+      .send(document);
+  });
+
   app.get<{ Params: { id: string } }>("/api/decks/:id/export/anki", async (req, reply) => {
     const user = requireUser(req, reply);
     if (!user) return;

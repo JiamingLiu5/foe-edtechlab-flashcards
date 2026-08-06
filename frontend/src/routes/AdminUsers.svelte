@@ -36,6 +36,11 @@
     }
   }
 
+  async function changeRole(user: AdminUserDTO, role: AdminUserDTO["role"]) {
+    if (role === user.role) return;
+    await act(user.id, (id) => api.adminSetRole(id, role));
+  }
+
   async function removeUser(user: AdminUserDTO) {
     if (!confirm(`Remove ${user.email}? This permanently deletes their decks, cards, reviews, and pending imports.`)) return;
 
@@ -80,7 +85,23 @@
           <tr>
             <td>{user.email}</td>
             <td class="muted">{user.displayName ?? "—"}</td>
-            <td><span class="pill role-{user.role}">{user.role}</span></td>
+            <td>
+              {#if user.status === "approved" && user.id !== $currentUser?.id}
+                <select
+                  class="pill role-select role-{user.role}"
+                  value={user.role}
+                  disabled={busyId === user.id}
+                  aria-label={`Change role for ${user.email}`}
+                  on:change={(event) => changeRole(user, (event.currentTarget as HTMLSelectElement).value as AdminUserDTO["role"])}
+                >
+                  <option value="student">student</option>
+                  <option value="teacher">teacher</option>
+                  <option value="admin">admin</option>
+                </select>
+              {:else}
+                <span class="pill role-{user.role}">{user.role}</span>
+              {/if}
+            </td>
             <td><span class="pill status-{user.status}">{user.status}</span></td>
             <td class="muted">{new Date(user.createdAt).toLocaleDateString()}</td>
             <td class="actions">
@@ -92,11 +113,6 @@
                 <button class="btn" disabled={busyId === user.id} on:click={() => act(user.id, api.adminReactivate)}>Reactivate</button>
               {:else if user.status === "approved" && user.id !== $currentUser?.id}
                 <button class="btn" disabled={busyId === user.id} on:click={() => act(user.id, api.adminDeactivate)}>Deactivate</button>
-              {/if}
-              {#if user.role !== "admin" && user.status === "approved"}
-                <button class="btn" disabled={busyId === user.id} on:click={() => act(user.id, api.adminPromote)}>Make admin</button>
-              {:else if user.role === "admin" && user.id !== $currentUser?.id}
-                <button class="btn" disabled={busyId === user.id} on:click={() => act(user.id, api.adminDemote)}>Remove admin</button>
               {/if}
               {#if user.id !== $currentUser?.id}
                 <button class="btn btn-danger" disabled={busyId === user.id} on:click={() => removeUser(user)}>Remove user</button>
@@ -126,6 +142,8 @@
   }
   .role-admin { background: rgba(110, 168, 254, 0.18); color: var(--accent); }
   .role-student, .role-teacher { background: var(--surface-2); color: var(--text-dim); }
+  .role-select { border: none; cursor: pointer; font: inherit; font-weight: 600; text-transform: capitalize; }
+  .role-select:disabled { cursor: wait; opacity: 0.65; }
   .status-pending { background: rgba(251, 191, 36, 0.18); color: var(--warn); }
   .status-approved { background: rgba(74, 222, 128, 0.18); color: var(--good); }
   .status-rejected, .status-deactivated { background: rgba(248, 113, 113, 0.18); color: var(--bad); }

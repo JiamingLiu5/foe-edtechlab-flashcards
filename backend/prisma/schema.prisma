@@ -174,6 +174,8 @@ model Card {
   source    String?
   includeInQuiz Boolean @default(true)
   difficulty CardDifficulty @default(medium)
+  /// Cached AI-generated plausible-but-wrong MCQ options; empty until first quiz generation, cleared when front/back changes.
+  distractors String[] @default([])
   /// Set via the Study page's "All done" action — excludes the card from future Study sessions until un-retired.
   retired   Boolean  @default(false)
   createdAt DateTime @default(now())

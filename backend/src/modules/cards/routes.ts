@@ -84,17 +84,23 @@ export async function cardRoutes(app: FastifyInstance) {
     const card = await prisma.card.findFirst({ where: { id: req.params.cardId, deckId: deck.id } });
     if (!card) return reply.code(404).send({ error: "not_found", message: "Card not found." });
 
+    const front = req.body?.front?.trim() || card.front;
+    const back = req.body?.back?.trim() || card.back;
+    const contentChanged = front !== card.front || back !== card.back;
+
     const updated = await prisma.card.update({
       where: { id: card.id },
       data: {
-        front: req.body?.front?.trim() || card.front,
-        back: req.body?.back?.trim() || card.back,
+        front,
+        back,
         tags: req.body?.tags
           ? [...new Set(req.body.tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 20)
           : card.tags,
         includeInQuiz: typeof req.body?.includeInQuiz === "boolean" ? req.body.includeInQuiz : card.includeInQuiz,
         retired: typeof req.body?.retired === "boolean" ? req.body.retired : card.retired,
         difficulty: isCardDifficulty(req.body?.difficulty) ? req.body.difficulty : card.difficulty,
+        // Cached MCQ distractors were written for the old wording — clear them so the next quiz regenerates.
+        distractors: contentChanged ? [] : card.distractors,
       },
     });
     return reply.send({ card: updated });

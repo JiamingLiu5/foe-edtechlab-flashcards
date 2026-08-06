@@ -152,7 +152,7 @@ export interface ApiErrorDTO {
   message: string;
 }
 
-export type QuotaBucket = "generation" | "grading" | "deck_review" | "pdf_page_limit" | "generated_card_limit";
+export type QuotaBucket = "generation" | "grading" | "deck_review" | "pdf_page_limit" | "generated_card_limit" | "mcq_distractors";
 
 export interface QuotaBucketDTO {
   bucket: QuotaBucket;

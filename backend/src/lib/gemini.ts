@@ -4,18 +4,22 @@ import { withRetry } from "./retry.js";
 import {
   GENERATION_SYSTEM_PROMPT,
   DIFFICULTY_SYSTEM_PROMPT,
+  DISTRACTOR_SYSTEM_PROMPT,
   GRADING_SYSTEM_PROMPT,
   REVIEW_SYSTEM_PROMPT,
   buildGenerationUserPrompt,
   buildDifficultyUserPrompt,
+  buildDistractorUserPrompt,
   buildGradingUserPrompt,
   buildReviewUserPrompt,
   parseGeneratedCards,
   parseCardDifficulties,
+  parseDistractors,
   parseGradingResult,
   parseReviewFlags,
   type GeneratedCard,
   type CardDifficultyAssessment,
+  type CardDistractors,
   type ReviewFlag,
 } from "./aiPrompts.js";
 
@@ -103,6 +107,19 @@ export async function assessCardDifficulties(
   });
 
   return parseCardDifficulties(response.text ?? "", "Gemini", cards);
+}
+
+/** Fallback deceptive-distractor generation when no Anthropic API key is configured. */
+export async function generateDistractors(
+  cards: { id: string; front: string; back: string }[]
+): Promise<CardDistractors[]> {
+  const response = await genai.models.generateContent({
+    model: env.geminiModelGeneration,
+    config: { systemInstruction: DISTRACTOR_SYSTEM_PROMPT },
+    contents: [{ role: "user", parts: [{ text: buildDistractorUserPrompt(cards) }] }],
+  });
+
+  return parseDistractors(response.text ?? "", "Gemini", cards);
 }
 
 /**

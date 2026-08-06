@@ -62,6 +62,21 @@ Judge only the cognitive demand of answering the card from its question and refe
 
 Respond with ONLY a JSON array: [{"index": number, "difficulty": "easy" | "medium" | "hard"}]. Include every supplied card exactly once. No prose or markdown fences.`;
 
+export const DISTRACTOR_SYSTEM_PROMPT = `You write deceptive multiple-choice distractors for university flashcards.
+
+For every card supplied (front = question/prompt, back = the single correct answer), write exactly 3 wrong answer options. Each distractor must:
+- Be plausible to a student who has studied the topic but confused a specific fact — wrong on one clear point (a name, number, mechanism, direction, or condition), not obviously absurd or off-topic.
+- Match the correct answer's length, format, and level of specificity (a one-word answer gets one-word distractors; a sentence gets sentence-length distractors).
+- Never be a reworded paraphrase of the correct answer, never be simply "none of the above" / "all of the above", and never repeat another distractor for the same card.
+- Preserve mathematical notation using LaTeX, wrapped in $...$ for inline or $$...$$ for block formulae, when the correct answer uses it.
+
+Respond with ONLY a JSON array: [{"index": number, "distractors": [string, string, string]}]. Include every supplied card exactly once. No prose or markdown fences.`;
+
+export function buildDistractorUserPrompt(cards: { front: string; back: string }[]): string {
+  const list = cards.map((c, i) => `${i + 1}. Q: ${c.front}\n   A: ${c.back}`).join("\n\n");
+  return `Write 3 deceptive distractors for each of these ${cards.length} flashcards:\n\n${list}`;
+}
+
 export function buildGenerationUserPrompt(params: {
   slideText: string;
   filename: string;
@@ -214,6 +229,50 @@ export function parseCardDifficulties(
   }
 
   return cards.map((card) => byCardId.get(card.id) ?? { cardId: card.id, difficulty: "medium" });
+}
+
+export interface CardDistractors {
+  cardId: string;
+  distractors: string[];
+}
+
+/** Maps the model's 1-indexed distractor sets back onto their cards, dropping blanks and anything matching the correct answer. */
+export function parseDistractors(
+  text: string,
+  providerName: string,
+  cards: { id: string; front: string; back: string }[]
+): CardDistractors[] {
+  const start = text.indexOf("[");
+  const end = text.lastIndexOf("]");
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`No JSON array found in ${providerName}'s distractor response.`);
+  }
+
+  const parsed = parseJsonSlice(text, start, end, providerName, "the distractor list");
+  if (!Array.isArray(parsed)) throw new Error("Expected a JSON array of distractor sets.");
+
+  const byCardId = new Map<string, CardDistractors>();
+  for (const item of parsed) {
+    if (typeof item !== "object" || item === null) continue;
+    const record = item as Record<string, unknown>;
+    const index = Number(record.index);
+    const card = Number.isInteger(index) ? cards[index - 1] : undefined;
+    if (!card) continue;
+
+    const rawDistractors = Array.isArray(record.distractors) ? record.distractors : [];
+    const seen = new Set<string>([card.back.trim().toLowerCase()]);
+    const distractors: string[] = [];
+    for (const raw of rawDistractors) {
+      const distractor = String(raw ?? "").trim();
+      const key = distractor.toLowerCase();
+      if (!distractor || seen.has(key)) continue;
+      seen.add(key);
+      distractors.push(distractor);
+    }
+    byCardId.set(card.id, { cardId: card.id, distractors });
+  }
+
+  return cards.map((card) => byCardId.get(card.id) ?? { cardId: card.id, distractors: [] });
 }
 
 export function parseGradingResult(

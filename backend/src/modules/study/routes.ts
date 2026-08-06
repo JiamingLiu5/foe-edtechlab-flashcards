@@ -2,7 +2,16 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../../db.js";
 import { requireUser } from "../auth/plugin.js";
 import { nextDueAt, type StudyIntervals } from "../../lib/reviewSchedule.js";
+import { ensureCardDistractors } from "../../lib/distractors.js";
 import type { ReviewOutcome } from "@flashcards/shared";
+
+/** Tops up AI distractors with other cards' answers when the AI didn't supply (or wasn't asked for) enough. */
+function topUpDistractors(distractors: string[], card: { id: string; back: string }, allCards: { id: string; back: string }[]): string[] {
+  if (distractors.length >= 3) return distractors.slice(0, 3);
+  const exclude = new Set([card.back, ...distractors]);
+  const filler = shuffle(allCards.filter((c) => c.id !== card.id && !exclude.has(c.back))).map((c) => c.back);
+  return [...distractors, ...filler].slice(0, 3);
+}
 
 async function getStudyIntervals(userId: string): Promise<StudyIntervals> {
   const user = await prisma.user.findUniqueOrThrow({
@@ -89,10 +98,9 @@ export async function studyRoutes(app: FastifyInstance) {
       return reply.send({ questions: [] });
     }
 
+    const aiDistractors = await ensureCardDistractors(user.userId, cards);
     const questions = cards.map((card) => {
-      const distractors = shuffle(cards.filter((c) => c.id !== card.id))
-        .slice(0, 3)
-        .map((c) => c.back);
+      const distractors = topUpDistractors(aiDistractors.get(card.id) ?? [], card, cards);
       const options = shuffle([card.back, ...distractors]);
       return { cardId: card.id, front: card.front, options, answer: card.back, difficulty: card.difficulty };
     });

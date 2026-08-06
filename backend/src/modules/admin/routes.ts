@@ -11,6 +11,7 @@ const QUOTA_BUCKETS: { bucket: QuotaBucket; label: string; defaultLimit: number;
   { bucket: "generation", label: "PDF / URL generation", defaultLimit: env.dailyGenerationQuota, scope: "daily", usageLabel: "today" },
   { bucket: "grading", label: "Self-check grading", defaultLimit: env.dailyGradingQuota, scope: "daily", usageLabel: "today" },
   { bucket: "deck_review", label: "AI deck review", defaultLimit: env.dailyDeckReviewQuota, scope: "daily", usageLabel: "today" },
+  { bucket: "mcq_distractors", label: "Deceptive MCQ distractor generation", defaultLimit: env.dailyDistractorQuota, scope: "daily", usageLabel: "today" },
   { bucket: "pdf_page_limit", label: "Maximum PDF pages", defaultLimit: env.maxPdfPages, scope: "per_upload", usageLabel: "pages per PDF" },
   { bucket: "generated_card_limit", label: "Maximum AI-generated cards", defaultLimit: env.maxGeneratedCards, scope: "per_upload", usageLabel: "cards per import" },
 ];
@@ -89,27 +90,34 @@ export async function adminRoutes(app: FastifyInstance) {
     return reply.send({ user: toAdminUserDTO(user) });
   });
 
-  app.post<{ Params: { id: string } }>("/api/admin/users/:id/promote", async (req, reply) => {
+  app.put<{ Params: { id: string }; Body: { role?: string } }>("/api/admin/users/:id/role", async (req, reply) => {
     const admin = requireAdmin(req, reply);
     if (!admin) return;
 
-    const user = await prisma.user.update({
-      where: { id: req.params.id },
-      data: { role: "admin" },
-    });
-    return reply.send({ user: toAdminUserDTO(user) });
-  });
-
-  app.post<{ Params: { id: string } }>("/api/admin/users/:id/demote", async (req, reply) => {
-    const admin = requireAdmin(req, reply);
-    if (!admin) return;
+    const role = req.body?.role;
+    if (role !== "student" && role !== "teacher" && role !== "admin") {
+      return reply.code(400).send({ error: "invalid_role", message: "Choose student, teacher, or admin." });
+    }
     if (req.params.id === admin.userId) {
-      return reply.code(400).send({ error: "cannot_self_demote", message: "You can't demote your own account." });
+      return reply.code(400).send({ error: "cannot_self_change_role", message: "You can't change your own role." });
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!targetUser) return reply.code(404).send({ error: "not_found", message: "User not found." });
+
+    if (targetUser.role === "admin" && role !== "admin") {
+      const adminCount = await prisma.user.count({ where: { role: "admin" } });
+      if (adminCount <= 1) {
+        return reply.code(400).send({
+          error: "cannot_remove_last_admin",
+          message: "At least one administrator account must remain.",
+        });
+      }
     }
 
     const user = await prisma.user.update({
       where: { id: req.params.id },
-      data: { role: "student" },
+      data: { role },
     });
     return reply.send({ user: toAdminUserDTO(user) });
   });
