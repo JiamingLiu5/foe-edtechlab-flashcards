@@ -64,7 +64,7 @@ Respond with ONLY a JSON array: [{"index": number, "difficulty": "easy" | "mediu
 
 export const DISTRACTOR_SYSTEM_PROMPT = `You write deceptive multiple-choice distractors for university flashcards.
 
-For every card supplied (front = question/prompt, back = the single correct answer), write exactly 3 wrong answer options. Each distractor must:
+For every card supplied, write exactly 3 wrong answer options. A card may have one or several correct answers; when several are listed, all of them must remain correct and must not be repeated as distractors. Each distractor must:
 - Be plausible to a student who has studied the topic but confused a specific fact — wrong on one clear point (a name, number, mechanism, direction, or condition), not obviously absurd or off-topic.
 - Match the correct answer's length, format, and level of specificity (a one-word answer gets one-word distractors; a sentence gets sentence-length distractors).
 - Never be a reworded paraphrase of the correct answer, never be simply "none of the above" / "all of the above", and never repeat another distractor for the same card.
@@ -72,9 +72,17 @@ For every card supplied (front = question/prompt, back = the single correct answ
 
 Respond with ONLY a JSON array: [{"index": number, "distractors": [string, string, string]}]. Include every supplied card exactly once. No prose or markdown fences.`;
 
-export function buildDistractorUserPrompt(cards: { front: string; back: string }[]): string {
-  const list = cards.map((c, i) => `${i + 1}. Q: ${c.front}\n   A: ${c.back}`).join("\n\n");
-  return `Write 3 deceptive distractors for each of these ${cards.length} flashcards:\n\n${list}`;
+export type DistractorCard = { id: string; front: string; back: string; correctAnswers?: string[] };
+
+export function buildDistractorUserPrompt(cards: DistractorCard[]): string {
+  const list = cards.map((c, i) => {
+    const correctAnswers = c.correctAnswers?.length ? c.correctAnswers : [c.back];
+    const answerBlock = correctAnswers.length === 1
+      ? `A: ${correctAnswers[0]}`
+      : `Correct answers (all accepted):\n${correctAnswers.map((answer) => `   - ${answer}`).join("\n")}`;
+    return `${i + 1}. Q: ${c.front}\n   ${answerBlock}`;
+  }).join("\n\n");
+  return `Write 3 deceptive distractors for each of these ${cards.length} flashcards. If a question lists multiple correct answers, do not generate any of those answers as distractors:\n\n${list}`;
 }
 
 export function buildGenerationUserPrompt(params: {
@@ -240,7 +248,7 @@ export interface CardDistractors {
 export function parseDistractors(
   text: string,
   providerName: string,
-  cards: { id: string; front: string; back: string }[]
+  cards: DistractorCard[]
 ): CardDistractors[] {
   const start = text.indexOf("[");
   const end = text.lastIndexOf("]");
@@ -260,7 +268,8 @@ export function parseDistractors(
     if (!card) continue;
 
     const rawDistractors = Array.isArray(record.distractors) ? record.distractors : [];
-    const seen = new Set<string>([card.back.trim().toLowerCase()]);
+    const correctAnswers = card.correctAnswers?.length ? card.correctAnswers : [card.back];
+    const seen = new Set<string>(correctAnswers.map((answer) => answer.trim().toLowerCase()));
     const distractors: string[] = [];
     for (const raw of rawDistractors) {
       const distractor = String(raw ?? "").trim();

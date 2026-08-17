@@ -7,7 +7,7 @@
 
   export let quizId: string;
   let attempt: ClassroomQuizAttemptDTO | null = null;
-  let selections: Record<string, string> = {};
+  let selections: Record<string, string[]> = {};
   let typedAnswers: Record<string, string> = {};
   let index = 0;
   let started = false;
@@ -21,7 +21,7 @@
   $: total = attempt?.questions.reduce((sum, item) => sum + item.points, 0) ?? 0;
   $: questionAnswered = question?.kind === "fill"
     ? !!typedAnswers[question.id]?.trim()
-    : !!(question && selections[question.id]);
+    : !!(question && selections[question.id]?.length);
   $: minutesLabel = remainingSeconds === null
     ? ""
     : `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`;
@@ -87,6 +87,14 @@
     typedAnswers = { ...typedAnswers, [questionId]: value };
   }
 
+  function toggleOption(questionId: string, option: string) {
+    const current = selections[questionId] ?? [];
+    const next = current.includes(option)
+      ? current.filter((value) => value !== option)
+      : [...current, option];
+    selections = { ...selections, [questionId]: next };
+  }
+
   onMount(load);
   onDestroy(clearTimer);
 </script>
@@ -100,14 +108,15 @@
   {#if attempt.submission}
     <div class="card-surface done"><h1>{attempt.quiz.title}</h1><p class="muted">{attempt.quiz.classroomName}</p><p class="score">Your score: {Number(attempt.submission.score.toFixed(2))} / {attempt.submission.totalPoints}</p><p class="muted">Submitted {new Date(attempt.submission.submittedAt).toLocaleString()}</p><button class="btn btn-primary" on:click={() => navigate("/classwork")}>Back to classwork</button></div>
   {:else if !started}
-    <div class="card-surface preview"><h1>{attempt.quiz.title}</h1><p class="muted">{attempt.quiz.classroomName} · {attempt.questions.length} questions</p><p>Review the question formats below. Your answers will be marked after you submit the complete quiz.</p><ol>{#each attempt.questions as item}<li><span class="muted small">{item.kind === "mcq" ? "Multiple choice" : "Fill in the blank"} · {item.points} point{item.points === 1 ? "" : "s"}</span><div><Katex text={item.prompt} /></div>{#if item.kind === "mcq"}<div class="preview-options">{#each item.options as option}<span><Katex text={option} /></span>{/each}</div>{/if}</li>{/each}</ol><button class="btn btn-primary" on:click={begin}>Start quiz</button></div>
+    <div class="card-surface preview"><h1>{attempt.quiz.title}</h1><p class="muted">{attempt.quiz.classroomName} · {attempt.questions.length} questions</p><p>Review the question formats below. Your answers will be marked after you submit the complete quiz.</p><ol>{#each attempt.questions as item}<li><span class="muted small">{item.kind === "mcq" ? "Multiple choice" : "Fill in the blank"} · {item.points} point{item.points === 1 ? "" : "s"}{item.kind === "mcq" && item.multiSelect ? " · Select all that apply" : ""}</span><div><Katex text={item.prompt} /></div>{#if item.kind === "mcq"}<div class="preview-options">{#each item.options as option}<span><Katex text={option} /></span>{/each}</div>{/if}</li>{/each}</ol><button class="btn btn-primary" on:click={begin}>Start quiz</button></div>
   {:else if question}
     <div class="question-status"><p class="muted">Question {index + 1} of {attempt.questions.length} · {question.kind === "mcq" ? "Multiple choice" : "Fill in the blank"} · {question.points} point{question.points === 1 ? "" : "s"}</p>{#if remainingSeconds !== null}<strong class="timer">{minutesLabel}</strong>{/if}</div>
     <div class="card-surface question">
       <h1>{attempt.quiz.title}</h1>
       <div class="prompt"><Katex text={question.prompt} /></div>
       {#if question.kind === "mcq"}
-        <div class="options">{#each question.options as option}<button class="option" class:selected={selections[question.id] === option} on:click={() => selections = { ...selections, [question!.id]: option }}><Katex text={option} /></button>{/each}</div>
+        {#if question.multiSelect}<p class="muted small">Select all that apply.</p>{/if}
+        <div class="options">{#each question.options as option}<button class="option" class:selected={selections[question.id]?.includes(option)} aria-pressed={selections[question.id]?.includes(option)} on:click={() => toggleOption(question!.id, option)}><Katex text={option} /></button>{/each}</div>
       {:else}
         <label for="fill-answer" class="muted small">Your answer</label>
         <textarea id="fill-answer" rows="5" value={typedAnswers[question.id] ?? ""} on:input={(event) => setTypedAnswer(question!.id, (event.currentTarget as HTMLTextAreaElement).value)} placeholder="Type your answer…"></textarea>

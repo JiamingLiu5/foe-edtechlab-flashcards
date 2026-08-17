@@ -101,6 +101,7 @@ model ClassroomQuizQuestion {
   kind      String         @default("mcq")
   prompt    String
   answer    String
+  correctAnswers String[]  @default([])
   options   String[]
   points    Float          @default(1)
 

@@ -44,7 +44,7 @@ export async function ensureCardDistractors(
 /** Generates distractors for teacher-authored questions that are not cards in a deck. */
 export async function generateQuestionDistractors(
   userId: string,
-  questions: { id: string; front: string; back: string }[],
+  questions: { id: string; front: string; back: string; correctAnswers: string[] }[],
 ): Promise<Map<string, string[]>> {
   const { allowed, limit } = await consumeDailyQuota(userId, QUOTA_BUCKET, env.dailyDistractorQuota);
   if (!allowed) {

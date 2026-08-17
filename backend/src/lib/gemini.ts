@@ -17,6 +17,7 @@ import {
   parseDistractors,
   parseGradingResult,
   parseReviewFlags,
+  type DistractorCard,
   type GeneratedCard,
   type CardDifficultyAssessment,
   type CardDistractors,
@@ -111,7 +112,7 @@ export async function assessCardDifficulties(
 
 /** Fallback deceptive-distractor generation when no Anthropic API key is configured. */
 export async function generateDistractors(
-  cards: { id: string; front: string; back: string }[]
+  cards: DistractorCard[]
 ): Promise<CardDistractors[]> {
   const response = await genai.models.generateContent({
     model: env.geminiModelGeneration,

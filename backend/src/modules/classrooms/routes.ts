@@ -26,7 +26,7 @@ type ClassroomQuizCreateBody = Partial<QuizConfiguration> & {
 };
 
 type McqOptionsBody = {
-  questions?: { id?: string; prompt?: string; answer?: string }[];
+  questions?: { id?: string; prompt?: string; answer?: string; answers?: string[] }[];
 };
 
 const QUIZ_MODES: QuizMode[] = ["mcq", "fill", "mix"];
@@ -65,6 +65,28 @@ function isQuizDifficulty(value: unknown): value is QuizDifficultyFilter {
 
 function isQuizKind(value: unknown): value is QuizQuestionKind {
   return typeof value === "string" && QUIZ_KINDS.includes(value as QuizQuestionKind);
+}
+
+function correctAnswersFor(question: { answer: string; correctAnswers: string[] }): string[] {
+  return question.correctAnswers.length > 0 ? question.correctAnswers : [question.answer];
+}
+
+function answerSetsMatch(selected: string[], correct: string[]): boolean {
+  const selectedSet = new Set(selected);
+  const correctSet = new Set(correct);
+  return selectedSet.size === correctSet.size && [...correctSet].every((answer) => selectedSet.has(answer));
+}
+
+function normaliseAnswers(answers: string[]): string[] {
+  const seen = new Set<string>();
+  return answers
+    .map((answer) => answer.trim())
+    .filter((answer) => {
+      const key = answer.toLowerCase();
+      if (!answer || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 function chooseCards<T extends { id: string; difficulty: string }>(
@@ -219,13 +241,17 @@ export async function classroomRoutes(app: FastifyInstance) {
     if (!Array.isArray(draftQuestions) || draftQuestions.length < 1 || draftQuestions.length > 100) {
       return reply.code(400).send({ error: "invalid_questions", message: "Add between 1 and 100 MCQ questions." });
     }
-    const questions = draftQuestions.map((question, index) => ({
-      id: question.id?.trim() || String(index),
-      front: question.prompt?.trim() ?? "",
-      back: question.answer?.trim() ?? "",
-    }));
-    if (questions.some((question) => !question.front || !question.back)) {
-      return reply.code(400).send({ error: "invalid_questions", message: "Every MCQ needs a question and a correct answer." });
+    const questions = draftQuestions.map((question, index) => {
+      const correctAnswers = normaliseAnswers(question.answers?.length ? question.answers : question.answer ? [question.answer] : []);
+      return {
+        id: question.id?.trim() || String(index),
+        front: question.prompt?.trim() ?? "",
+        back: correctAnswers[0] ?? "",
+        correctAnswers,
+      };
+    });
+    if (questions.some((question) => !question.front || question.correctAnswers.length === 0)) {
+      return reply.code(400).send({ error: "invalid_questions", message: "Every MCQ needs a question and at least one correct answer." });
     }
 
     try {
@@ -235,7 +261,8 @@ export async function classroomRoutes(app: FastifyInstance) {
           id: question.id,
           prompt: question.front,
           answer: question.back,
-          options: shuffle([question.back, ...(distractors.get(question.id) ?? [])]),
+          correctAnswers: question.correctAnswers,
+          options: shuffle([...question.correctAnswers, ...(distractors.get(question.id) ?? [])]),
         })),
       });
     } catch (error: any) {
@@ -291,6 +318,7 @@ export async function classroomRoutes(app: FastifyInstance) {
       kind: QuizQuestionKind;
       prompt: string;
       answer: string;
+      correctAnswers: string[];
       points: number;
       options: string[];
     };
@@ -300,18 +328,20 @@ export async function classroomRoutes(app: FastifyInstance) {
       if (mode !== "mcq" || difficultyFilter !== "all" || hardQuestionCount !== 0
         || body.questions!.length !== count || body.questions!.some((question) => {
           const prompt = question.prompt?.trim() ?? "";
-          const answer = question.answer?.trim() ?? "";
+          const correctAnswers = normaliseAnswers(question.correctAnswers?.length ? question.correctAnswers : question.answer ? [question.answer] : []);
           const options = question.options ?? [];
-          return !prompt || !answer || question.kind !== "mcq" || options.length < 4 || !options.includes(answer)
+          return !prompt || correctAnswers.length === 0 || question.kind !== "mcq"
+            || options.length < correctAnswers.length + 3 || correctAnswers.some((answer) => !options.includes(answer))
             || !Number.isFinite(Number(question.points)) || Number(question.points) < 0;
         })) {
-        return reply.code(400).send({ error: "invalid_quiz", message: "Custom MCQs must include a question, correct answer, four options, and no deck difficulty filter." });
+        return reply.code(400).send({ error: "invalid_quiz", message: "Custom MCQs must include a question, at least one correct answer, three wrong options, and no deck difficulty filter." });
       }
       prepared = body.questions!.map((question) => ({
         card: null,
         kind: "mcq",
         prompt: question.prompt!.trim(),
-        answer: question.answer!.trim(),
+        correctAnswers: normaliseAnswers(question.correctAnswers?.length ? question.correctAnswers : [question.answer!]),
+        answer: normaliseAnswers(question.correctAnswers?.length ? question.correctAnswers : [question.answer!])[0],
         points: Number(question.points),
         options: [...(question.options ?? [])],
       }));
@@ -354,6 +384,7 @@ export async function classroomRoutes(app: FastifyInstance) {
         kind: question.kind,
         prompt: cardsById.get(question.cardId!)!.front,
         answer: cardsById.get(question.cardId!)!.back,
+        correctAnswers: [cardsById.get(question.cardId!)!.back],
         points: Number(question.points),
         options: question.kind === "fill" ? [] : [...(question.options ?? [])],
       }));
@@ -367,6 +398,7 @@ export async function classroomRoutes(app: FastifyInstance) {
         kind: mode === "mix" ? (Math.random() < 0.5 ? "mcq" : "fill") : mode,
         prompt: card.front,
         answer: card.back,
+        correctAnswers: [card.back],
         points: 1,
         options: [],
       }));
@@ -390,11 +422,12 @@ export async function classroomRoutes(app: FastifyInstance) {
             kind: question.kind,
             prompt: question.prompt,
             answer: question.answer,
+            correctAnswers: question.correctAnswers,
             points: question.points,
             options: question.kind === "fill"
               ? []
-              : shuffle(question.options.length >= 4
-                ? question.options.slice(0, 4)
+              : shuffle(question.options.length >= question.correctAnswers.length + 3
+                ? question.options.slice(0, question.correctAnswers.length + 3)
                 : question.card
                   ? [question.answer, ...topUpDistractors(aiDistractors.get(question.card.id) ?? [], question.card, deck.cards)]
                   : question.options),
@@ -463,14 +496,21 @@ export async function classroomRoutes(app: FastifyInstance) {
     if (!quiz) return reply.code(404).send({ error: "not_found", message: "Quiz not found." });
     return reply.send({
       quiz: quizSummary(quiz, null, quiz.classroom.name),
-      questions: quiz.questions.map((question) => ({ id: question.id, prompt: question.prompt, options: question.options, points: question.points, kind: isQuizKind(question.kind) ? question.kind : "mcq" })),
+      questions: quiz.questions.map((question) => ({
+        id: question.id,
+        prompt: question.prompt,
+        options: question.options,
+        points: question.points,
+        kind: isQuizKind(question.kind) ? question.kind : "mcq",
+        multiSelect: correctAnswersFor(question).length > 1,
+      })),
       submission: quiz.submissions[0]
         ? { ...quiz.submissions[0], submittedAt: quiz.submissions[0].submittedAt.toISOString() }
         : null,
     });
   });
 
-  app.post<{ Params: { id: string }; Body: { answers?: { questionId?: string; selected?: string | null; typedAnswer?: string | null }[] } }>("/api/classroom-quizzes/:id/submit", async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: { answers?: { questionId?: string; selected?: string | string[] | null; typedAnswer?: string | null }[] } }>("/api/classroom-quizzes/:id/submit", async (req, reply) => {
     const student = requireStudent(req, reply);
     if (!student) return;
     const quiz = await prisma.classroomQuiz.findFirst({
@@ -491,8 +531,13 @@ export async function classroomRoutes(app: FastifyInstance) {
           const typedAnswer = answer?.typedAnswer?.trim();
           if (!typedAnswer) continue;
           score += question.points * (await gradeClassroomFillAnswer(student.userId, question.prompt, question.answer, typedAnswer) / 100);
-        } else if (answer?.selected === question.answer) {
-          score += question.points;
+        } else {
+          const selected = Array.isArray(answer?.selected)
+            ? answer.selected
+            : answer?.selected
+              ? [answer.selected]
+              : [];
+          if (answerSetsMatch(selected, correctAnswersFor(question))) score += question.points;
         }
       }
     } catch (error: any) {

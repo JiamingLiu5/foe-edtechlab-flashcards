@@ -81,8 +81,8 @@ export const api = {
   listTeacherClassrooms: () => request<{ classrooms: ClassroomSummaryDTO[] }>("/classrooms"),
   createClassroom: (name: string) => request<{ classroom: ClassroomSummaryDTO }>("/classrooms", { method: "POST", body: JSON.stringify({ name }) }),
   getTeacherClassroom: (id: string) => request<{ classroom: ClassroomSummaryDTO; members: ClassroomMemberDTO[]; quizzes: ClassroomQuizDTO[] }>(`/classrooms/${id}`),
-  generateClassroomMcqOptions: (classroomId: string, questions: { id: string; prompt: string; answer: string }[]) =>
-    request<{ questions: { id: string; prompt: string; answer: string; options: string[] }[] }>(`/classrooms/${classroomId}/mcq-options`, {
+  generateClassroomMcqOptions: (classroomId: string, questions: { id: string; prompt: string; answers: string[] }[]) =>
+    request<{ questions: { id: string; prompt: string; answer: string; correctAnswers: string[]; options: string[] }[] }>(`/classrooms/${classroomId}/mcq-options`, {
       method: "POST", body: JSON.stringify({ questions }),
     }),
   createClassroomQuiz: (
@@ -100,7 +100,7 @@ export const api = {
   joinClassroom: (joinCode: string) => request<{ classroom: ClassroomSummaryDTO }>("/classrooms/join", { method: "POST", body: JSON.stringify({ joinCode }) }),
   listClassroomAssignments: () => request<{ quizzes: ClassroomQuizDTO[] }>("/classroom-quizzes"),
   getClassroomQuiz: (id: string) => request<ClassroomQuizAttemptDTO>(`/classroom-quizzes/${id}`),
-  submitClassroomQuiz: (id: string, answers: { questionId: string; selected?: string | null; typedAnswer?: string | null }[]) =>
+  submitClassroomQuiz: (id: string, answers: { questionId: string; selected?: string | string[] | null; typedAnswer?: string | null }[]) =>
     request<{ submission: QuizSubmissionDTO }>(`/classroom-quizzes/${id}/submit`, { method: "POST", body: JSON.stringify({ answers }) }),
 
   listDecks: () => request<{ decks: DeckSummaryDTO[] }>("/decks"),

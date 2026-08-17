@@ -18,6 +18,7 @@ import {
   parseDistractors,
   parseGradingResult,
   parseReviewFlags,
+  type DistractorCard,
   type GeneratedCard,
   type CardDifficultyAssessment,
   type CardDistractors,
@@ -110,7 +111,7 @@ export async function assessCardDifficulties(
 }
 
 export async function generateDistractors(
-  cards: { id: string; front: string; back: string }[]
+  cards: DistractorCard[]
 ): Promise<CardDistractors[]> {
   return withRetry(async () => {
     if (usingGemini) {

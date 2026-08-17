@@ -23,12 +23,13 @@
     back: string;
     options: string[];
     answer: string;
+    correctAnswers: string[];
     difficulty: CardDifficulty;
     points: number;
   };
   type QuizStage = "setup" | "preview";
   type QuestionSource = "deck" | "manual";
-  type ManualQuestion = { id: string; prompt: string; answer: string };
+  type ManualQuestion = { id: string; prompt: string; answers: string };
 
   let classroom: ClassroomSummaryDTO | null = null;
   let members: ClassroomMemberDTO[] = [];
@@ -40,7 +41,7 @@
   let title = "";
   let mode: "mcq" | "fill" | "mix" = "mcq";
   let questionSource: QuestionSource = "deck";
-  let manualQuestions: ManualQuestion[] = [{ id: "manual-1", prompt: "", answer: "" }];
+  let manualQuestions: ManualQuestion[] = [{ id: "manual-1", prompt: "", answers: "" }];
   let requestedQuestionCount = 5;
   let difficultyFilter: "all" | CardDifficulty = "all";
   let requestedHardQuestionCount = 0;
@@ -62,10 +63,10 @@
   }
 
   function addManualQuestion() {
-    manualQuestions = [...manualQuestions, { id: `manual-${manualQuestions.length + 1}-${Date.now()}`, prompt: "", answer: "" }];
+    manualQuestions = [...manualQuestions, { id: `manual-${manualQuestions.length + 1}-${Date.now()}`, prompt: "", answers: "" }];
   }
 
-  function updateManualQuestion(id: string, field: "prompt" | "answer", value: string) {
+  function updateManualQuestion(id: string, field: "prompt" | "answers", value: string) {
     manualQuestions = manualQuestions.map((question) => question.id === id ? { ...question, [field]: value } : question);
   }
 
@@ -127,15 +128,21 @@
     error = "";
     try {
       if (mode === "mcq" && questionSource === "manual") {
-        if (manualQuestions.some((question) => !question.prompt.trim() || !question.answer.trim())) {
-          throw new Error("Add a question and correct answer for every MCQ before generating options.");
+        const drafts = manualQuestions.map((question) => ({
+          id: question.id,
+          prompt: question.prompt,
+          answers: question.answers.split(/\r?\n/).map((answer) => answer.trim()).filter(Boolean),
+        }));
+        if (drafts.some((question) => !question.prompt.trim() || question.answers.length === 0)) {
+          throw new Error("Add a question and at least one correct answer for every MCQ before generating options.");
         }
-        const generated = await api.generateClassroomMcqOptions(classroomId, manualQuestions);
+        const generated = await api.generateClassroomMcqOptions(classroomId, drafts);
         configuredQuestions = generated.questions.map((question) => ({
           kind: "mcq",
           front: question.prompt,
           back: question.answer,
           answer: question.answer,
+          correctAnswers: question.correctAnswers,
           options: question.options,
           difficulty: "medium",
           points: 1,
@@ -150,10 +157,10 @@
 
       const [mcq, fill] = await Promise.all([api.getQuiz(deckId), api.getFillQuiz(deckId)]);
       const mcqQuestions: TeacherQuestion[] = mcq.questions.map((question) => ({
-        kind: "mcq", ...question, back: question.answer, answer: question.answer, points: 1,
+        kind: "mcq", ...question, back: question.answer, answer: question.answer, correctAnswers: [question.answer], points: 1,
       }));
       const fillQuestions: TeacherQuestion[] = fill.questions.map((question) => ({
-        kind: "fill", ...question, options: [], answer: question.back, points: 1,
+        kind: "fill", ...question, options: [], answer: question.back, correctAnswers: [question.back], points: 1,
       }));
       const mcqByCardId = new Map(mcqQuestions.map((question) => [question.cardId, question]));
       const mixedQuestions: TeacherQuestion[] = fillQuestions.map((question) => {
@@ -203,6 +210,7 @@
           options: question.options,
           prompt: question.cardId ? undefined : question.front,
           answer: question.cardId ? undefined : question.answer,
+          correctAnswers: question.correctAnswers,
         })),
       );
       quizzes = [quiz, ...quizzes];
@@ -268,12 +276,12 @@
         <label class="check-row"><input type="checkbox" bind:checked={showPreview} /><span>Show question preview before students start</span></label>
         {#if mode === "mcq" && questionSource === "manual"}
           <div class="manual-editor">
-            <div class="manual-heading"><div><h3>Write MCQs</h3><p class="muted small">Enter the question and correct answer. AI will create three wrong options.</p></div><button class="btn" type="button" on:click={addManualQuestion}>Add question</button></div>
+            <div class="manual-heading"><div><h3>Write MCQs</h3><p class="muted small">Enter one or more correct answers, one per line. AI will create three wrong options.</p></div><button class="btn" type="button" on:click={addManualQuestion}>Add question</button></div>
             {#each manualQuestions as manualQuestion, questionIndex}
               <div class="manual-question">
                 <strong>Question {questionIndex + 1}</strong>
                 <label>Question <textarea rows="2" value={manualQuestion.prompt} on:input={(event) => updateManualQuestion(manualQuestion.id, "prompt", (event.currentTarget as HTMLTextAreaElement).value)} placeholder="e.g. What is the main function of...?"></textarea></label>
-                <label>Correct answer <textarea rows="2" value={manualQuestion.answer} on:input={(event) => updateManualQuestion(manualQuestion.id, "answer", (event.currentTarget as HTMLTextAreaElement).value)} placeholder="Enter the reference answer"></textarea></label>
+                <label>Correct answers (one per line) <textarea rows="3" value={manualQuestion.answers} on:input={(event) => updateManualQuestion(manualQuestion.id, "answers", (event.currentTarget as HTMLTextAreaElement).value)} placeholder="Answer one\nAnswer two"></textarea></label>
                 {#if manualQuestions.length > 1}<button class="remove-question" type="button" on:click={() => removeManualQuestion(manualQuestion.id)}>Remove</button>{/if}
               </div>
             {/each}
@@ -290,7 +298,7 @@
         {#each configuredQuestions as question, questionIndex}
           <li class="preview-question">
             <div class="preview-content">
-              <p class="muted small">{question.kind === "mcq" ? "Multiple choice" : "Fill in the blank"} · {question.difficulty}</p>
+              <p class="muted small">{question.kind === "mcq" ? "Multiple choice" : "Fill in the blank"} · {question.difficulty}{question.kind === "mcq" && question.correctAnswers.length > 1 ? " · Select all that apply" : ""}</p>
               <div class="front"><Katex text={question.front} /></div>
               {#if question.kind === "mcq"}<div class="preview-options">{#each question.options as option}<div><Katex text={option} /></div>{/each}</div>{/if}
             </div>

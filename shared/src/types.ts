@@ -221,6 +221,7 @@ export interface ClassroomQuizQuestionDraftDTO {
   options?: string[];
   prompt?: string;
   answer?: string;
+  correctAnswers?: string[];
 }
 
 export interface QuizSubmissionDTO {
@@ -238,6 +239,7 @@ export interface ClassroomQuizQuestionDTO {
   options: string[];
   points: number;
   kind: QuizQuestionKind;
+  multiSelect: boolean;
 }
 
 export interface ClassroomQuizAttemptDTO {
