@@ -6,9 +6,11 @@ import type {
   CardDifficulty,
   ClassroomQuizAttemptDTO,
   ClassroomQuizDTO,
+  ClassroomQuizQuestionDraftDTO,
   ClassroomSummaryDTO,
   ClassroomMemberDTO,
   QuizSubmissionDTO,
+  QuizConfiguration,
   DeckSourceDTO,
   DeckSummaryDTO,
   DueCardDTO,
@@ -79,16 +81,26 @@ export const api = {
   listTeacherClassrooms: () => request<{ classrooms: ClassroomSummaryDTO[] }>("/classrooms"),
   createClassroom: (name: string) => request<{ classroom: ClassroomSummaryDTO }>("/classrooms", { method: "POST", body: JSON.stringify({ name }) }),
   getTeacherClassroom: (id: string) => request<{ classroom: ClassroomSummaryDTO; members: ClassroomMemberDTO[]; quizzes: ClassroomQuizDTO[] }>(`/classrooms/${id}`),
-  createClassroomQuiz: (classroomId: string, deckId: string, title: string, questionCount: number) =>
+  generateClassroomMcqOptions: (classroomId: string, questions: { id: string; prompt: string; answer: string }[]) =>
+    request<{ questions: { id: string; prompt: string; answer: string; options: string[] }[] }>(`/classrooms/${classroomId}/mcq-options`, {
+      method: "POST", body: JSON.stringify({ questions }),
+    }),
+  createClassroomQuiz: (
+    classroomId: string,
+    deckId: string,
+    title: string,
+    configuration: QuizConfiguration,
+    questions?: ClassroomQuizQuestionDraftDTO[],
+  ) =>
     request<{ quiz: ClassroomQuizDTO }>(`/classrooms/${classroomId}/quizzes`, {
-      method: "POST", body: JSON.stringify({ deckId, title, questionCount }),
+      method: "POST", body: JSON.stringify({ deckId, title, ...configuration, questions }),
     }),
   classroomQuizScores: (classroomId: string, quizId: string) =>
     request<{ quiz: ClassroomQuizDTO; scores: QuizSubmissionDTO[] }>(`/classrooms/${classroomId}/quizzes/${quizId}/scores`),
   joinClassroom: (joinCode: string) => request<{ classroom: ClassroomSummaryDTO }>("/classrooms/join", { method: "POST", body: JSON.stringify({ joinCode }) }),
   listClassroomAssignments: () => request<{ quizzes: ClassroomQuizDTO[] }>("/classroom-quizzes"),
   getClassroomQuiz: (id: string) => request<ClassroomQuizAttemptDTO>(`/classroom-quizzes/${id}`),
-  submitClassroomQuiz: (id: string, answers: { questionId: string; selected: string | null }[]) =>
+  submitClassroomQuiz: (id: string, answers: { questionId: string; selected?: string | null; typedAnswer?: string | null }[]) =>
     request<{ submission: QuizSubmissionDTO }>(`/classroom-quizzes/${id}/submit`, { method: "POST", body: JSON.stringify({ answers }) }),
 
   listDecks: () => request<{ decks: DeckSummaryDTO[] }>("/decks"),
@@ -129,6 +141,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(edited ? { front: edited.front, back: edited.back } : {}),
     }),
+  acceptAllDrafts: (jobId: string) =>
+    request<{ cards: CardDTO[] }>(`/generation-jobs/${jobId}/drafts/accept-all`, { method: "POST", body: JSON.stringify({}) }),
   discardDraft: (jobId: string, draftId: string) =>
     request<{ ok: true }>(`/generation-jobs/${jobId}/drafts/${draftId}/discard`, { method: "POST" }),
 

@@ -15,9 +15,11 @@
   let editBack = "";
   let timer: ReturnType<typeof setInterval>;
   let quizPromptCard: CardDTO | null = null;
+  let quizPromptCards: CardDTO[] = [];
   let quizPromptSaving = false;
   let quizPromptError = "";
   let acceptingDraftId = "";
+  let acceptingAll = false;
 
   let sources: DeckSourceDTO[] = [];
   let sourcesOpen = false;
@@ -86,7 +88,7 @@
   }
 
   async function accept(draft: AiDraftDTO, edited: boolean) {
-    if (acceptingDraftId || quizPromptCard) return;
+    if (acceptingDraftId || acceptingAll || quizPromptCard || quizPromptCards.length > 0) return;
 
     acceptingDraftId = draft.id;
     try {
@@ -96,6 +98,7 @@
         // Do not refresh the job yet: keeping the draft visible behind this
         // choice makes it clear that accepting is not fully complete yet.
         quizPromptCard = card;
+        quizPromptCards = [card];
         quizPromptError = "";
         return;
       }
@@ -105,10 +108,32 @@
     }
   }
 
+  async function acceptAll() {
+    if (acceptingDraftId || acceptingAll || quizPromptCard || quizPromptCards.length > 0 || editingId || pending.length === 0) return;
+
+    acceptingAll = true;
+    error = "";
+    try {
+      const { cards } = await api.acceptAllDrafts(jobId);
+      if (!isReview && cards.length > 0) {
+        quizPromptCards = cards;
+        quizPromptError = "";
+      } else {
+        await poll();
+      }
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : "Couldn't accept all drafts.";
+    } finally {
+      acceptingAll = false;
+    }
+  }
+
   async function chooseQuizPreference(includeInQuiz: boolean) {
-    if (!quizPromptCard || quizPromptSaving) return;
+    const cards = quizPromptCards.length > 0 ? quizPromptCards : quizPromptCard ? [quizPromptCard] : [];
+    if (cards.length === 0 || quizPromptSaving) return;
     if (!includeInQuiz) {
       quizPromptCard = null;
+      quizPromptCards = [];
       await poll();
       return;
     }
@@ -116,13 +141,18 @@
     quizPromptSaving = true;
     quizPromptError = "";
     try {
-      await api.updateCard(deckId, quizPromptCard.id, {
-        front: quizPromptCard.front,
-        back: quizPromptCard.back,
-        tags: quizPromptCard.tags,
-        includeInQuiz: true,
-      });
+      await Promise.all(
+        cards.map((card) =>
+          api.updateCard(deckId, card.id, {
+            front: card.front,
+            back: card.back,
+            tags: card.tags,
+            includeInQuiz: true,
+          })
+        )
+      );
       quizPromptCard = null;
+      quizPromptCards = [];
       await poll();
     } catch (error) {
       quizPromptError = error instanceof ApiError ? error.message : "Couldn't update the quiz preference.";
@@ -186,6 +216,23 @@
     <p class="done card-surface">All drafts resolved. <button class="btn btn-primary" on:click={() => navigate(`/decks/${deckId}`)}>Back to deck</button></p>
   {/if}
 
+  {#if pending.length > 0}
+    <div class="bulk-actions card-surface">
+      <div>
+        <strong>{pending.length} draft{pending.length === 1 ? "" : "s"} ready</strong>
+        <span class="muted small">Accept every pending draft at once.</span>
+      </div>
+      <button
+        class="btn btn-primary"
+        on:click={acceptAll}
+        disabled={!!acceptingDraftId || acceptingAll || !!editingId || quizPromptCards.length > 0}
+        title={editingId ? "Finish or cancel editing before accepting all drafts" : undefined}
+      >
+        {acceptingAll ? "Accepting all…" : "Accept all"}
+      </button>
+    </div>
+  {/if}
+
   <ul class="drafts">
     {#each pending as draft}
       <li class="card-surface draft">
@@ -193,10 +240,10 @@
           <input bind:value={editFront} placeholder="Front" />
           <textarea rows="3" bind:value={editBack} placeholder="Back"></textarea>
           <div class="row" data-tour-target="review-drafts">
-            <button class="btn btn-primary" on:click={() => accept(draft, true)} disabled={!!acceptingDraftId}>
+            <button class="btn btn-primary" on:click={() => accept(draft, true)} disabled={!!acceptingDraftId || acceptingAll}>
               {acceptingDraftId === draft.id ? "Accepting…" : "Save & accept"}
             </button>
-            <button class="btn" on:click={() => (editingId = null)} disabled={!!acceptingDraftId}>Cancel</button>
+            <button class="btn" on:click={() => (editingId = null)} disabled={!!acceptingDraftId || acceptingAll}>Cancel</button>
           </div>
         {:else}
           <div class="diff">
@@ -214,11 +261,11 @@
             {#if draft.sourceCitation}<div class="citation">📎 {draft.sourceCitation}</div>{/if}
           </div>
           <div class="row" data-tour-target="review-drafts">
-            <button class="btn btn-primary" on:click={() => accept(draft, false)} disabled={!!acceptingDraftId}>
+            <button class="btn btn-primary" on:click={() => accept(draft, false)} disabled={!!acceptingDraftId || acceptingAll}>
               {acceptingDraftId === draft.id ? "Accepting…" : isReview ? "Accept fix" : "Accept"}
             </button>
-            <button class="btn" on:click={() => startEdit(draft)} disabled={!!acceptingDraftId}>Edit</button>
-            <button class="btn btn-danger" on:click={() => discard(draft)} disabled={!!acceptingDraftId}>{isReview ? "Keep original" : "Discard"}</button>
+            <button class="btn" on:click={() => startEdit(draft)} disabled={!!acceptingDraftId || acceptingAll}>Edit</button>
+            <button class="btn btn-danger" on:click={() => discard(draft)} disabled={!!acceptingDraftId || acceptingAll}>{isReview ? "Keep original" : "Discard"}</button>
           </div>
         {/if}
       </li>
@@ -237,13 +284,15 @@
     </ul>
   {/if}
 
-  {#if quizPromptCard}
+  {#if quizPromptCard || quizPromptCards.length > 0}
     <div class="prompt-backdrop">
       <dialog open class="card-surface quiz-prompt" aria-labelledby="quiz-prompt-title">
-        <h2 id="quiz-prompt-title">Use this card in quizzes?</h2>
-        <p class="muted">You accepted:</p>
-        <div class="accepted-question"><Katex text={quizPromptCard.front} /></div>
-        <p class="muted">Would you like to include it in multiple-choice and fill-in-the-blank quizzes?</p>
+        <h2 id="quiz-prompt-title">Use {quizPromptCards.length > 1 ? "these cards" : "this card"} in quizzes?</h2>
+        <p class="muted">You accepted {quizPromptCards.length > 1 ? `${quizPromptCards.length} cards` : "a card"}.</p>
+        {#if quizPromptCards.length === 1}
+          <div class="accepted-question"><Katex text={quizPromptCards[0].front} /></div>
+        {/if}
+        <p class="muted">Would you like to include {quizPromptCards.length > 1 ? "them" : "it"} in multiple-choice and fill-in-the-blank quizzes?</p>
         {#if quizPromptError}<p class="error">{quizPromptError}</p>{/if}
         <div class="row">
           <button class="btn btn-primary" on:click={() => chooseQuizPreference(true)} disabled={quizPromptSaving}>
@@ -279,6 +328,8 @@
   .delete { background: none; border: none; color: var(--text-dim); font-size: 0.8rem; }
   .delete:hover { color: var(--bad); }
   .done { padding: 1rem; display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+  .bulk-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.85rem 1rem; margin-bottom: 1rem; }
+  .bulk-actions > div { display: flex; flex-direction: column; gap: 0.2rem; }
   .drafts { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.8rem; }
   .draft { padding: 1rem; }
   .front { font-weight: 600; margin-bottom: 0.35rem; }
@@ -300,4 +351,7 @@
   .quiz-prompt h2 { margin: 0 0 0.65rem; }
   .quiz-prompt p { line-height: 1.5; }
   .accepted-question { margin: 0.5rem 0 1rem; padding: 0.8rem; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; background: var(--surface-2); font-weight: 600; }
+  @media (max-width: 600px) {
+    .bulk-actions { align-items: stretch; flex-direction: column; }
+  }
 </style>

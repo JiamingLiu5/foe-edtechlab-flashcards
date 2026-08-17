@@ -40,3 +40,26 @@ export async function ensureCardDistractors(
 
   return result;
 }
+
+/** Generates distractors for teacher-authored questions that are not cards in a deck. */
+export async function generateQuestionDistractors(
+  userId: string,
+  questions: { id: string; front: string; back: string }[],
+): Promise<Map<string, string[]>> {
+  const { allowed, limit } = await consumeDailyQuota(userId, QUOTA_BUCKET, env.dailyDistractorQuota);
+  if (!allowed) {
+    throw Object.assign(new Error(`Daily MCQ distractor generation limit (${limit}) reached. Try again tomorrow.`), { code: "quota_exceeded" });
+  }
+
+  try {
+    const generated = await generateDistractors(questions);
+    const result = new Map(generated.map((item) => [item.cardId, item.distractors]));
+    if (questions.some((question) => (result.get(question.id)?.length ?? 0) < 3)) {
+      throw Object.assign(new Error("AI did not return three wrong options for every question."), { code: "incomplete_distractors" });
+    }
+    return result;
+  } catch (error) {
+    await releaseDailyQuota(userId, QUOTA_BUCKET);
+    throw error;
+  }
+}

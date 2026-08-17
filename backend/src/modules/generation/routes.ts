@@ -282,6 +282,56 @@ export async function generationRoutes(app: FastifyInstance) {
     return reply.send({ job: toDTO(job) });
   });
 
+  app.post<{ Params: { id: string } }>("/api/generation-jobs/:id/drafts/accept-all", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+
+    const job = await prisma.generationJob.findFirst({
+      where: { id: req.params.id, deck: { ownerId: user.userId } },
+    });
+    if (!job) return reply.code(404).send({ error: "not_found", message: "Job not found." });
+
+    const pendingDrafts = await prisma.aiDraft.findMany({
+      where: { jobId: job.id, status: "pending" },
+      include: { originalCard: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const cards = await prisma.$transaction(async (tx) => {
+      const acceptedCards = [];
+      for (const draft of pendingDrafts) {
+        const front = draft.editedFront || draft.generatedFront;
+        const back = draft.editedBack || draft.generatedBack;
+        const card = draft.originalCardId
+          ? await tx.card.update({ where: { id: draft.originalCardId }, data: { front, back, difficulty: draft.difficulty } })
+          : await tx.card.create({
+              data: {
+                deckId: job.deckId,
+                front,
+                back,
+                source: draft.sourceCitation ? `AI · ${draft.sourceCitation}` : "AI",
+                includeInQuiz: false,
+                difficulty: draft.difficulty,
+              },
+            });
+
+        await tx.aiDraft.update({
+          where: { id: draft.id },
+          data: {
+            status: "accepted",
+            resultingCardId: draft.originalCardId ? undefined : card.id,
+            editedFront: front !== draft.generatedFront ? front : draft.editedFront,
+            editedBack: back !== draft.generatedBack ? back : draft.editedBack,
+          },
+        });
+        acceptedCards.push(card);
+      }
+      return acceptedCards;
+    });
+
+    return reply.send({ cards });
+  });
+
   app.post<{ Params: { id: string; draftId: string }; Body: { front?: string; back?: string } }>(
     "/api/generation-jobs/:id/drafts/:draftId/accept",
     async (req, reply) => {

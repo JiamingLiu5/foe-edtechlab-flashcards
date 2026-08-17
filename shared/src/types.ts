@@ -192,7 +192,35 @@ export interface ClassroomQuizDTO {
   title: string;
   createdAt: string;
   questionCount: number;
+  mode: QuizMode;
+  difficultyFilter: QuizDifficultyFilter;
+  hardQuestionCount: number;
+  timerMinutes: number;
+  showPreview: boolean;
   submission: QuizSubmissionDTO | null;
+}
+
+export type QuizMode = "mcq" | "fill" | "mix";
+export type QuizQuestionKind = "mcq" | "fill";
+export type QuizDifficultyFilter = "all" | CardDifficulty;
+
+/** Settings shared by self-study quizzes and teacher-created classroom quizzes. */
+export interface QuizConfiguration {
+  mode: QuizMode;
+  questionCount: number;
+  difficultyFilter: QuizDifficultyFilter;
+  hardQuestionCount: number;
+  timerMinutes: number;
+  showPreview: boolean;
+}
+
+export interface ClassroomQuizQuestionDraftDTO {
+  cardId?: string;
+  kind: QuizQuestionKind;
+  points: number;
+  options?: string[];
+  prompt?: string;
+  answer?: string;
 }
 
 export interface QuizSubmissionDTO {
@@ -209,6 +237,7 @@ export interface ClassroomQuizQuestionDTO {
   prompt: string;
   options: string[];
   points: number;
+  kind: QuizQuestionKind;
 }
 
 export interface ClassroomQuizAttemptDTO {

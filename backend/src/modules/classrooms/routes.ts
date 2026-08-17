@@ -1,14 +1,38 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../db.js";
+import { env } from "../../env.js";
+import { gradeSelfCheckAnswer } from "../../lib/claude.js";
 import { requireStudent, requireTeacher } from "../auth/plugin.js";
-import { ensureCardDistractors } from "../../lib/distractors.js";
+import { ensureCardDistractors, generateQuestionDistractors } from "../../lib/distractors.js";
+import { consumeDailyQuota, releaseDailyQuota } from "../../lib/quota.js";
+import { isRetryableAiError } from "../../lib/retry.js";
 import type {
+  ClassroomQuizQuestionDraftDTO,
   ClassroomMemberDTO,
   ClassroomQuizDTO,
   ClassroomSummaryDTO,
+  QuizConfiguration,
+  QuizDifficultyFilter,
+  QuizMode,
+  QuizQuestionKind,
   QuizSubmissionDTO,
 } from "@flashcards/shared";
+
+type ClassroomQuizCreateBody = Partial<QuizConfiguration> & {
+  deckId?: string;
+  title?: string;
+  questions?: ClassroomQuizQuestionDraftDTO[];
+};
+
+type McqOptionsBody = {
+  questions?: { id?: string; prompt?: string; answer?: string }[];
+};
+
+const QUIZ_MODES: QuizMode[] = ["mcq", "fill", "mix"];
+const QUIZ_DIFFICULTIES: QuizDifficultyFilter[] = ["all", "easy", "medium", "hard"];
+const QUIZ_KINDS: QuizQuestionKind[] = ["mcq", "fill"];
+const AI_GRADING_TIMEOUT_MS = 40_000;
 
 function shuffle<T>(items: T[]): T[] {
   const result = [...items];
@@ -31,6 +55,33 @@ function newJoinCode(): string {
   return crypto.randomBytes(4).toString("hex").toUpperCase();
 }
 
+function isQuizMode(value: unknown): value is QuizMode {
+  return typeof value === "string" && QUIZ_MODES.includes(value as QuizMode);
+}
+
+function isQuizDifficulty(value: unknown): value is QuizDifficultyFilter {
+  return typeof value === "string" && QUIZ_DIFFICULTIES.includes(value as QuizDifficultyFilter);
+}
+
+function isQuizKind(value: unknown): value is QuizQuestionKind {
+  return typeof value === "string" && QUIZ_KINDS.includes(value as QuizQuestionKind);
+}
+
+function chooseCards<T extends { id: string; difficulty: string }>(
+  cards: T[],
+  count: number,
+  difficultyFilter: QuizDifficultyFilter,
+  hardQuestionCount: number
+): T[] {
+  const hard = shuffle(cards.filter((card) => card.difficulty === "hard")).slice(0, hardQuestionCount);
+  const selectedIds = new Set(hard.map((card) => card.id));
+  const remaining = cards.filter((card) => !selectedIds.has(card.id));
+  const matching = difficultyFilter === "all"
+    ? remaining
+    : remaining.filter((card) => card.difficulty === difficultyFilter);
+  return shuffle([...hard, ...shuffle(matching).slice(0, count - hard.length)]);
+}
+
 function classroomSummary(classroom: {
   id: string; name: string; joinCode: string; createdAt: Date; _count: { members: number; quizzes: number };
 }): ClassroomSummaryDTO {
@@ -45,7 +96,8 @@ function classroomSummary(classroom: {
 }
 
 function quizSummary(quiz: {
-  id: string; classroomId: string; title: string; createdAt: Date; _count: { questions: number };
+  id: string; classroomId: string; title: string; createdAt: Date; mode: string; difficultyFilter: string;
+  hardQuestionCount: number; timerMinutes: number; showPreview: boolean; _count: { questions: number };
 }, submission: { studentId: string; score: number; totalPoints: number; submittedAt: Date } | null = null, classroomName?: string): ClassroomQuizDTO {
   return {
     id: quiz.id,
@@ -54,6 +106,11 @@ function quizSummary(quiz: {
     title: quiz.title,
     createdAt: quiz.createdAt.toISOString(),
     questionCount: quiz._count.questions,
+    mode: isQuizMode(quiz.mode) ? quiz.mode : "mcq",
+    difficultyFilter: isQuizDifficulty(quiz.difficultyFilter) ? quiz.difficultyFilter : "all",
+    hardQuestionCount: quiz.hardQuestionCount,
+    timerMinutes: quiz.timerMinutes,
+    showPreview: quiz.showPreview,
     submission: submission ? {
       studentId: submission.studentId,
       score: submission.score,
@@ -75,6 +132,26 @@ function submissionSummary(submission: {
     totalPoints: submission.totalPoints,
     submittedAt: submission.submittedAt.toISOString(),
   };
+}
+
+async function gradeClassroomFillAnswer(userId: string, question: string, referenceAnswer: string, studentAnswer: string): Promise<number> {
+  const quota = await consumeDailyQuota(userId, "grading", env.dailyGradingQuota);
+  if (!quota.allowed) {
+    throw Object.assign(new Error(`Daily self-check grading limit (${quota.limit}) reached. Try again tomorrow.`), { code: "quota_exceeded" });
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AI_GRADING_TIMEOUT_MS);
+  try {
+    const result = await gradeSelfCheckAnswer({ question, referenceAnswer, studentAnswer }, controller.signal);
+    return Math.max(0, Math.min(100, result.score));
+  } catch (error) {
+    await releaseDailyQuota(userId, "grading");
+    if (controller.signal.aborted) throw Object.assign(new Error("AI grading timed out."), { code: "ai_timeout" });
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function classroomRoutes(app: FastifyInstance) {
@@ -132,41 +209,195 @@ export async function classroomRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post<{ Params: { id: string }; Body: { deckId?: string; title?: string; questionCount?: number } }>("/api/classrooms/:id/quizzes", async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: McqOptionsBody }>("/api/classrooms/:id/mcq-options", async (req, reply) => {
     const teacher = requireTeacher(req, reply);
     if (!teacher) return;
     const classroom = await prisma.classroom.findFirst({ where: { id: req.params.id, teacherId: teacher.userId } });
     if (!classroom) return reply.code(404).send({ error: "not_found", message: "Classroom not found." });
 
-    const deckId = req.body?.deckId;
-    const count = Math.floor(Number(req.body?.questionCount));
-    if (!deckId || !Number.isInteger(count) || count < 1 || count > 100) {
-      return reply.code(400).send({ error: "invalid_quiz", message: "Choose a deck and between 1 and 100 questions." });
+    const draftQuestions = req.body?.questions ?? [];
+    if (!Array.isArray(draftQuestions) || draftQuestions.length < 1 || draftQuestions.length > 100) {
+      return reply.code(400).send({ error: "invalid_questions", message: "Add between 1 and 100 MCQ questions." });
+    }
+    const questions = draftQuestions.map((question, index) => ({
+      id: question.id?.trim() || String(index),
+      front: question.prompt?.trim() ?? "",
+      back: question.answer?.trim() ?? "",
+    }));
+    if (questions.some((question) => !question.front || !question.back)) {
+      return reply.code(400).send({ error: "invalid_questions", message: "Every MCQ needs a question and a correct answer." });
+    }
+
+    try {
+      const distractors = await generateQuestionDistractors(teacher.userId, questions);
+      return reply.send({
+        questions: questions.map((question) => ({
+          id: question.id,
+          prompt: question.front,
+          answer: question.back,
+          options: shuffle([question.back, ...(distractors.get(question.id) ?? [])]),
+        })),
+      });
+    } catch (error: any) {
+      if (error?.code === "quota_exceeded") return reply.code(429).send({ error: "quota_exceeded", message: error.message });
+      if (error?.code === "incomplete_distractors") return reply.code(503).send({ error: "ai_incomplete", message: "AI could not create three wrong options for every question. Please try again." });
+      if (isRetryableAiError(error)) return reply.code(503).send({ error: "ai_unavailable", message: "AI distractor generation is temporarily unavailable. Please try again." });
+      throw error;
+    }
+  });
+
+  app.post<{ Params: { id: string }; Body: ClassroomQuizCreateBody }>("/api/classrooms/:id/quizzes", async (req, reply) => {
+    const teacher = requireTeacher(req, reply);
+    if (!teacher) return;
+    const classroom = await prisma.classroom.findFirst({ where: { id: req.params.id, teacherId: teacher.userId } });
+    if (!classroom) return reply.code(404).send({ error: "not_found", message: "Classroom not found." });
+
+    const body = req.body ?? {};
+    const deckId = body.deckId;
+    const count = Math.floor(Number(body.questionCount));
+    const mode = body.mode ?? "mcq";
+    const difficultyFilter = body.difficultyFilter ?? "all";
+    const hardQuestionCount = Math.floor(Number(body.hardQuestionCount ?? 0));
+    const timerMinutes = Math.floor(Number(body.timerMinutes ?? 0));
+    const showPreview = body.showPreview ?? true;
+    if (!deckId || !Number.isInteger(count) || count < 1 || count > 100
+      || !isQuizMode(mode) || !isQuizDifficulty(difficultyFilter)
+      || !Number.isInteger(hardQuestionCount) || hardQuestionCount < 0 || hardQuestionCount > count
+      || !Number.isInteger(timerMinutes) || timerMinutes < 0 || timerMinutes > 24 * 60
+      || typeof showPreview !== "boolean") {
+      return reply.code(400).send({ error: "invalid_quiz", message: "Choose a valid quiz format, question count, difficulty, hard-question count, and timer." });
     }
     const deck = await prisma.deck.findFirst({
       where: { id: deckId, ownerId: teacher.userId },
-      // Classroom assignments use the teacher's whole deck. The student's personal
-      // practice preference (`includeInQuiz`) should not silently omit taught material.
       include: { cards: true },
     });
     if (!deck) return reply.code(404).send({ error: "not_found", message: "Quiz deck not found." });
-    if (deck.cards.length < 4) {
-      return reply.code(400).send({ error: "not_enough_cards", message: "A classroom quiz needs at least four cards for answer options." });
-    }
-    if (count > deck.cards.length) {
-      return reply.code(400).send({ error: "not_enough_cards", message: `Only ${deck.cards.length} cards are available in this deck.` });
+
+    // Teacher assignments follow the same quiz-eligible pool as self-study quizzes.
+    const eligibleCards = deck.cards.filter((card) => card.includeInQuiz);
+    const hasCustomQuestions = Array.isArray(body.questions)
+      && body.questions.length > 0
+      && body.questions.every((question) => !question.cardId);
+    if ((mode === "mcq" || mode === "mix") && eligibleCards.length < 4 && !hasCustomQuestions) {
+      return reply.code(400).send({ error: "not_enough_cards", message: "Multiple-choice quizzes need at least four quiz-eligible cards for answer options." });
     }
 
-    const selected = shuffle(deck.cards).slice(0, count);
+    if (!Array.isArray(body.questions) && count > eligibleCards.length) {
+      return reply.code(400).send({ error: "not_enough_cards", message: `Only ${eligibleCards.length} quiz-eligible cards match this deck.` });
+    }
+
+    type PreparedQuestion = {
+      card: (typeof deck.cards)[number] | null;
+      kind: QuizQuestionKind;
+      prompt: string;
+      answer: string;
+      points: number;
+      options: string[];
+    };
+
+    let prepared: PreparedQuestion[];
+    if (hasCustomQuestions) {
+      if (mode !== "mcq" || difficultyFilter !== "all" || hardQuestionCount !== 0
+        || body.questions!.length !== count || body.questions!.some((question) => {
+          const prompt = question.prompt?.trim() ?? "";
+          const answer = question.answer?.trim() ?? "";
+          const options = question.options ?? [];
+          return !prompt || !answer || question.kind !== "mcq" || options.length < 4 || !options.includes(answer)
+            || !Number.isFinite(Number(question.points)) || Number(question.points) < 0;
+        })) {
+        return reply.code(400).send({ error: "invalid_quiz", message: "Custom MCQs must include a question, correct answer, four options, and no deck difficulty filter." });
+      }
+      prepared = body.questions!.map((question) => ({
+        card: null,
+        kind: "mcq",
+        prompt: question.prompt!.trim(),
+        answer: question.answer!.trim(),
+        points: Number(question.points),
+        options: [...(question.options ?? [])],
+      }));
+    } else if (Array.isArray(body.questions)) {
+      if (body.questions.length !== count || body.questions.length < 1) {
+        return reply.code(400).send({ error: "invalid_quiz", message: "The prepared questions do not match the requested question count." });
+      }
+
+      const cardsById = new Map(eligibleCards.map((card) => [card.id, card]));
+      const seen = new Set<string>();
+      const invalid = body.questions.some((question) => {
+        const cardId = question.cardId;
+        if (!cardId) return true;
+        const card = cardsById.get(cardId);
+        const kindAllowed = mode === "mix" ? isQuizKind(question.kind) : question.kind === mode;
+        const points = Number(question.points);
+        const options = question.options ?? [];
+        const optionsAllowed = question.kind === "fill"
+          ? options.length === 0
+          : options.length >= 2 && options.includes(card?.back ?? "");
+        if (!card || seen.has(cardId) || !kindAllowed || !Number.isFinite(points) || points < 0 || !optionsAllowed) return true;
+        seen.add(cardId);
+        return false;
+      });
+      if (invalid) {
+        return reply.code(400).send({ error: "invalid_quiz", message: "The prepared quiz questions are invalid." });
+      }
+
+      const selectedCards = body.questions.map((question) => cardsById.get(question.cardId!)!);
+      const hardSelected = selectedCards.filter((card) => card.difficulty === "hard").length;
+      const matchingSelected = difficultyFilter === "all"
+        ? selectedCards
+        : selectedCards.filter((card) => card.difficulty === difficultyFilter);
+      if (hardSelected < hardQuestionCount || matchingSelected.length < count - hardQuestionCount) {
+        return reply.code(400).send({ error: "invalid_quiz", message: "The prepared questions do not match the selected difficulty settings." });
+      }
+
+      prepared = body.questions.map((question) => ({
+        card: cardsById.get(question.cardId!)!,
+        kind: question.kind,
+        prompt: cardsById.get(question.cardId!)!.front,
+        answer: cardsById.get(question.cardId!)!.back,
+        points: Number(question.points),
+        options: question.kind === "fill" ? [] : [...(question.options ?? [])],
+      }));
+    } else {
+      const selected = chooseCards(eligibleCards, count, difficultyFilter, hardQuestionCount);
+      if (selected.length < count) {
+        return reply.code(400).send({ error: "not_enough_cards", message: `Only ${selected.length} quiz-eligible cards match this setup.` });
+      }
+      prepared = selected.map((card) => ({
+        card,
+        kind: mode === "mix" ? (Math.random() < 0.5 ? "mcq" : "fill") : mode,
+        prompt: card.front,
+        answer: card.back,
+        points: 1,
+        options: [],
+      }));
+    }
+
     const title = req.body?.title?.trim() || `${deck.name} quiz`;
-    const aiDistractors = await ensureCardDistractors(teacher.userId, deck.cards);
+    const needsDistractors = prepared.some((question) => question.kind === "mcq" && question.card && question.options.length < 4);
+    const aiDistractors = needsDistractors ? await ensureCardDistractors(teacher.userId, deck.cards) : new Map<string, string[]>();
     const quiz = await prisma.classroomQuiz.create({
       data: {
-        classroomId: classroom.id, title,
+        classroomId: classroom.id,
+        title,
+        mode,
+        difficultyFilter,
+        hardQuestionCount,
+        timerMinutes,
+        showPreview,
         questions: {
-          create: selected.map((card, position) => ({
-            position, prompt: card.front, answer: card.back,
-            options: shuffle([card.back, ...topUpDistractors(aiDistractors.get(card.id) ?? [], card, deck.cards)]),
+          create: prepared.map((question, position) => ({
+            position,
+            kind: question.kind,
+            prompt: question.prompt,
+            answer: question.answer,
+            points: question.points,
+            options: question.kind === "fill"
+              ? []
+              : shuffle(question.options.length >= 4
+                ? question.options.slice(0, 4)
+                : question.card
+                  ? [question.answer, ...topUpDistractors(aiDistractors.get(question.card.id) ?? [], question.card, deck.cards)]
+                  : question.options),
           })),
         },
       },
@@ -232,14 +463,14 @@ export async function classroomRoutes(app: FastifyInstance) {
     if (!quiz) return reply.code(404).send({ error: "not_found", message: "Quiz not found." });
     return reply.send({
       quiz: quizSummary(quiz, null, quiz.classroom.name),
-      questions: quiz.questions.map((question) => ({ id: question.id, prompt: question.prompt, options: question.options, points: question.points })),
+      questions: quiz.questions.map((question) => ({ id: question.id, prompt: question.prompt, options: question.options, points: question.points, kind: isQuizKind(question.kind) ? question.kind : "mcq" })),
       submission: quiz.submissions[0]
         ? { ...quiz.submissions[0], submittedAt: quiz.submissions[0].submittedAt.toISOString() }
         : null,
     });
   });
 
-  app.post<{ Params: { id: string }; Body: { answers?: { questionId?: string; selected?: string | null }[] } }>("/api/classroom-quizzes/:id/submit", async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: { answers?: { questionId?: string; selected?: string | null; typedAnswer?: string | null }[] } }>("/api/classroom-quizzes/:id/submit", async (req, reply) => {
     const student = requireStudent(req, reply);
     if (!student) return;
     const quiz = await prisma.classroomQuiz.findFirst({
@@ -250,9 +481,26 @@ export async function classroomRoutes(app: FastifyInstance) {
     const existing = await prisma.quizSubmission.findUnique({ where: { quizId_studentId: { quizId: quiz.id, studentId: student.userId } } });
     if (existing) return reply.code(409).send({ error: "already_submitted", message: "You have already submitted this quiz." });
 
-    const selections = new Map((req.body?.answers ?? []).map((answer) => [answer.questionId, answer.selected]));
+    const answers = new Map((req.body?.answers ?? []).map((answer) => [answer.questionId, answer]));
     const totalPoints = quiz.questions.reduce((total, question) => total + question.points, 0);
-    const score = quiz.questions.reduce((total, question) => total + (selections.get(question.id) === question.answer ? question.points : 0), 0);
+    let score = 0;
+    try {
+      for (const question of quiz.questions) {
+        const answer = answers.get(question.id);
+        if (question.kind === "fill") {
+          const typedAnswer = answer?.typedAnswer?.trim();
+          if (!typedAnswer) continue;
+          score += question.points * (await gradeClassroomFillAnswer(student.userId, question.prompt, question.answer, typedAnswer) / 100);
+        } else if (answer?.selected === question.answer) {
+          score += question.points;
+        }
+      }
+    } catch (error: any) {
+      if (error?.code === "quota_exceeded") return reply.code(429).send({ error: "quota_exceeded", message: error.message });
+      if (error?.code === "ai_timeout") return reply.code(504).send({ error: "ai_timeout", message: "AI grading is taking too long. Please try again." });
+      if (isRetryableAiError(error)) return reply.code(503).send({ error: "ai_unavailable", message: "AI grading is temporarily unavailable. Please try again." });
+      throw error;
+    }
     try {
       const submission = await prisma.quizSubmission.create({ data: { quizId: quiz.id, studentId: student.userId, score, totalPoints } });
       return reply.code(201).send({ submission: { studentId: submission.studentId, score: submission.score, totalPoints: submission.totalPoints, submittedAt: submission.submittedAt.toISOString() } });

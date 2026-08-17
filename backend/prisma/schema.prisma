@@ -75,11 +75,16 @@ model ClassroomMember {
 }
 
 model ClassroomQuiz {
-  id          String   @id @default(uuid())
-  classroomId String
-  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
-  title       String
-  createdAt   DateTime @default(now())
+  id                String   @id @default(uuid())
+  classroomId       String
+  classroom         Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  title             String
+  mode              String   @default("mcq")
+  difficultyFilter  String   @default("all")
+  hardQuestionCount Int      @default(0)
+  timerMinutes      Int      @default(0)
+  showPreview       Boolean  @default(true)
+  createdAt         DateTime @default(now())
 
   questions   ClassroomQuizQuestion[]
   submissions QuizSubmission[]
@@ -93,6 +98,7 @@ model ClassroomQuizQuestion {
   quizId    String
   quiz      ClassroomQuiz  @relation(fields: [quizId], references: [id], onDelete: Cascade)
   position  Int
+  kind      String         @default("mcq")
   prompt    String
   answer    String
   options   String[]
