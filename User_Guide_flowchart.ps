@@ -1,5 +1,5 @@
 %!PS-Adobe-3.0
-%%Title: Flashcards revision flowchart
+%%Title: Flashcards assessment flowchart
 %%Creator: OpenAI Codex
 %%Pages: 1
 %%BoundingBox: 0 0 1200 800
@@ -82,13 +82,12 @@ gsave 0.985 0.99 1 setrgbcolor 0 0 pageW pageH rectfill grestore
 
 % Header
 navy setrgbcolor 0 730 moveto pageW 0 rlineto 0 70 rlineto pageW neg 0 rlineto closepath fill
-white setrgbcolor /Helvetica-Bold findfont 28 scalefont setfont 48 765 moveto (Flashcards revision flow) show
+white setrgbcolor /Helvetica-Bold findfont 28 scalefont setfont 48 765 moveto (Flashcards assessment flow) show
 0.82 0.91 0.98 setrgbcolor /Helvetica findfont 13 scalefont setfont
-48 744 moveto (Turn course material into cards, check the drafts, and practise in the mode that fits your session.) show
+48 744 moveto (Turn course material into question on cards, review drafts, and assess learning in your preferred mode.) show
 
 % Main flow labels
 navy setrgbcolor /Helvetica-Bold findfont 11 scalefont setfont 48 692 moveto (START HERE) show
-muted setrgbcolor /Helvetica findfont 11 scalefont setfont 1090 692 moveto (REVISE + REPEAT) show
 
 % Main boxes
 % 1
@@ -138,19 +137,20 @@ muted setrgbcolor /Helvetica findfont 12 scalefont setfont
 ink setrgbcolor /Helvetica-Bold findfont 18 scalefont setfont 838 530 moveto (Review drafts) show
 muted setrgbcolor /Helvetica findfont 12 scalefont setfont
 838 502 moveto (For every draft:) show
-838 480 moveto (Accept  |  Edit  |  Discard) show
+838 480 moveto (Review manually or with AI:) show
+838 462 moveto (Accept  |  Edit  |  Discard) show
 838 444 moveto (Check wording and accuracy) show
 838 426 moveto (before adding it to the deck.) show
 
 % 6
 /paleBlue /blue 1015 420 170 150 box
 /blue (6) 30 554 1015 pill
-ink setrgbcolor /Helvetica-Bold findfont 18 scalefont setfont 1033 530 moveto (Practise) show
+ink setrgbcolor /Helvetica-Bold findfont 18 scalefont setfont 1033 530 moveto (Learn/Assess) show
 muted setrgbcolor /Helvetica findfont 12 scalefont setfont
 1033 502 moveto (Choose Study, Quiz, or) show
 1033 484 moveto (Self-check.) show
-1033 446 moveto (Return to Add cards or) show
-1033 428 moveto (edit cards as you improve.) show
+1033 446 moveto (Cycle through modes as you) show
+1033 428 moveto (learn and assess.) show
 
 % Arrows across main path
 235 495 225 495 arrow
@@ -163,18 +163,19 @@ muted setrgbcolor /Helvetica findfont 12 scalefont setfont
 navy setrgbcolor /Helvetica-Bold findfont 13 scalefont setfont 430 360 moveto (SOURCE OPTIONS) show
 muted setrgbcolor /Helvetica findfont 11 scalefont setfont 430 342 moveto (Manual skips AI generation; the other three options create draft cards.) show
 
-% Mini source boxes
+% Mini source boxes. Paste cards sits left of From PDF to keep the direct
+% option visually distinct from the imported source options.
 /paleGold /gold 430 270 175 45 box
 ink setrgbcolor /Helvetica-Bold findfont 13 scalefont setfont 446 306 moveto (Manual card) show
 muted setrgbcolor /Helvetica findfont 10 scalefont setfont 446 286 moveto (Write question, answer, tags) show
 
-/paleBlue /blue 620 270 175 45 box
-ink setrgbcolor /Helvetica-Bold findfont 13 scalefont setfont 636 306 moveto (Paste cards) show
-muted setrgbcolor /Helvetica findfont 10 scalefont setfont 636 286 moveto (Paste study text or lecture notes) show
+/paleTeal /teal 620 270 175 45 box
+ink setrgbcolor /Helvetica-Bold findfont 13 scalefont setfont 636 306 moveto (From PDF) show
+muted setrgbcolor /Helvetica findfont 10 scalefont setfont 636 286 moveto (Upload lecture slides or notes) show
 
-/paleTeal /teal 430 195 175 45 box
-ink setrgbcolor /Helvetica-Bold findfont 13 scalefont setfont 446 231 moveto (From PDF) show
-muted setrgbcolor /Helvetica findfont 10 scalefont setfont 446 211 moveto (Upload lecture slides or notes) show
+/paleBlue /blue 430 195 175 45 box
+ink setrgbcolor /Helvetica-Bold findfont 13 scalefont setfont 446 231 moveto (Paste cards) show
+muted setrgbcolor /Helvetica findfont 10 scalefont setfont 446 211 moveto (Paste study text or lecture notes) show
 
 /palePurple /purple 620 195 175 45 box
 ink setrgbcolor /Helvetica-Bold findfont 13 scalefont setfont 636 231 moveto (From link) show
@@ -193,7 +194,7 @@ muted setrgbcolor /Helvetica findfont 11 scalefont setfont
 905 420 905 390 downArrow
 
 % Practice modes panel
-navy setrgbcolor /Helvetica-Bold findfont 13 scalefont setfont 1015 360 moveto (PRACTISE MODES) show
+navy setrgbcolor /Helvetica-Bold findfont 13 scalefont setfont 1015 360 moveto (ASSESSMENT MODES) show
 muted setrgbcolor /Helvetica findfont 11 scalefont setfont 1015 342 moveto (Pick a mode.) show
 
 % Three mode cards
@@ -209,17 +210,22 @@ muted setrgbcolor /Helvetica findfont 10 scalefont setfont 1031 234 moveto (MCQ 
 ink setrgbcolor /Helvetica-Bold findfont 13 scalefont setfont 1031 200 moveto (Self-check) show
 muted setrgbcolor /Helvetica findfont 10 scalefont setfont 1031 184 moveto (Own words -> AI feedback.) show
 
-% Improvement strip / loop
+% Improvement strip
 navy setrgbcolor 0 82 moveto pageW 0 rlineto 0 24 rlineto pageW neg 0 rlineto closepath fill
 white setrgbcolor /Helvetica-Bold findfont 12 scalefont setfont 48 90 moveto (KEEP IMPROVING) show
 0.82 0.91 0.98 setrgbcolor /Helvetica findfont 11 scalefont setfont
-190 90 moveto (Add tags  ->  set difficulty  ->  edit or delete cards  ->  export to Anki  ->  return to practise) show
+190 90 moveto (Add tags  ->  set difficulty  ->  edit or delete cards  ->  export to Anki  ->  return to Learn/Assess) show
 
-% Flow loop cue
-gsave blue setrgbcolor 2 setlinewidth [5 4] 0 setdash
-newpath 1100 420 moveto 1100 390 lineto 1190 390 lineto 1190 370 stroke
-newpath 1190 370 moveto 1182 374 lineto 1182 366 lineto closepath fill
+% External Learn/Assess loop
+gsave blue setrgbcolor 1.8 setlinewidth [5 4] 0 setdash
+newpath 1165 635 moveto
+  1165 660 1135 680 1100 680 curveto
+  1060 680 1030 660 1030 635 curveto
+  1030 610 1060 590 1100 590 curveto
+  1135 590 1165 610 1165 635 curveto
+stroke
+newpath 1165 635 moveto 1153 642 lineto 1153 628 lineto closepath fill
 grestore
-blue setrgbcolor /Helvetica-Bold findfont 11 scalefont 1108 396 moveto (loop) show
+blue setrgbcolor /Helvetica-Bold findfont 11 scalefont setfont 1045 640 moveto (LEARN+ASSESS) show
 
 showpage
