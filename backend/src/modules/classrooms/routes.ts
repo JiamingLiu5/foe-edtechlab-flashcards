@@ -15,6 +15,7 @@ import type {
   QuizConfiguration,
   QuizDifficultyFilter,
   QuizMode,
+  QuizQuestionBreakdownDTO,
   QuizQuestionKind,
   QuizSubmissionDTO,
 } from "@flashcards/shared";
@@ -89,6 +90,38 @@ function normaliseAnswers(answers: string[]): string[] {
     });
 }
 
+type SubmissionAnswerWithQuestion = {
+  questionId: string;
+  selected: string[];
+  typedAnswer: string | null;
+  pointsEarned: number;
+  question: {
+    position: number;
+    kind: string;
+    prompt: string;
+    answer: string;
+    correctAnswers: string[];
+    points: number;
+  };
+};
+
+function questionBreakdown(answers: SubmissionAnswerWithQuestion[]): QuizQuestionBreakdownDTO[] {
+  return [...answers]
+    .sort((a, b) => a.question.position - b.question.position)
+    .map((answer) => {
+      const kind = isQuizKind(answer.question.kind) ? answer.question.kind : "mcq";
+      return {
+        questionId: answer.questionId,
+        prompt: answer.question.prompt,
+        kind,
+        studentAnswer: kind === "fill" ? answer.typedAnswer : answer.selected,
+        correctAnswer: kind === "fill" ? answer.question.answer : correctAnswersFor(answer.question),
+        points: answer.question.points,
+        pointsEarned: answer.pointsEarned,
+      };
+    });
+}
+
 function chooseCards<T extends { id: string; difficulty: string }>(
   cards: T[],
   count: number,
@@ -119,7 +152,7 @@ function classroomSummary(classroom: {
 
 function quizSummary(quiz: {
   id: string; classroomId: string; title: string; createdAt: Date; mode: string; difficultyFilter: string;
-  hardQuestionCount: number; timerMinutes: number; showPreview: boolean; _count: { questions: number };
+  hardQuestionCount: number; timerMinutes: number; showPreview: boolean; allowStudentBreakdown: boolean; _count: { questions: number };
 }, submission: { studentId: string; score: number; totalPoints: number; submittedAt: Date } | null = null, classroomName?: string): ClassroomQuizDTO {
   return {
     id: quiz.id,
@@ -133,6 +166,7 @@ function quizSummary(quiz: {
     hardQuestionCount: quiz.hardQuestionCount,
     timerMinutes: quiz.timerMinutes,
     showPreview: quiz.showPreview,
+    allowStudentBreakdown: quiz.allowStudentBreakdown,
     submission: submission ? {
       studentId: submission.studentId,
       score: submission.score,
@@ -144,16 +178,21 @@ function quizSummary(quiz: {
 
 function submissionSummary(submission: {
   studentId: string; score: number; totalPoints: number; submittedAt: Date;
-  student: { email: string; displayName: string | null };
-}): QuizSubmissionDTO {
-  return {
+  student?: { email: string; displayName: string | null };
+  answers?: SubmissionAnswerWithQuestion[];
+}, includeBreakdown = false): QuizSubmissionDTO {
+  const summary: QuizSubmissionDTO = {
     studentId: submission.studentId,
-    studentEmail: submission.student.email,
-    studentDisplayName: submission.student.displayName,
     score: submission.score,
     totalPoints: submission.totalPoints,
     submittedAt: submission.submittedAt.toISOString(),
   };
+  if (submission.student) {
+    summary.studentEmail = submission.student.email;
+    summary.studentDisplayName = submission.student.displayName;
+  }
+  if (includeBreakdown) summary.breakdown = questionBreakdown(submission.answers ?? []);
+  return summary;
 }
 
 async function gradeClassroomFillAnswer(userId: string, question: string, referenceAnswer: string, studentAnswer: string): Promise<number> {
@@ -287,11 +326,12 @@ export async function classroomRoutes(app: FastifyInstance) {
     const hardQuestionCount = Math.floor(Number(body.hardQuestionCount ?? 0));
     const timerMinutes = Math.floor(Number(body.timerMinutes ?? 0));
     const showPreview = body.showPreview ?? true;
+    const allowStudentBreakdown = body.allowStudentBreakdown ?? false;
     if (!deckId || !Number.isInteger(count) || count < 1 || count > 100
       || !isQuizMode(mode) || !isQuizDifficulty(difficultyFilter)
       || !Number.isInteger(hardQuestionCount) || hardQuestionCount < 0 || hardQuestionCount > count
       || !Number.isInteger(timerMinutes) || timerMinutes < 0 || timerMinutes > 24 * 60
-      || typeof showPreview !== "boolean") {
+      || typeof showPreview !== "boolean" || typeof allowStudentBreakdown !== "boolean") {
       return reply.code(400).send({ error: "invalid_quiz", message: "Choose a valid quiz format, question count, difficulty, hard-question count, and timer." });
     }
     const deck = await prisma.deck.findFirst({
@@ -416,6 +456,7 @@ export async function classroomRoutes(app: FastifyInstance) {
         hardQuestionCount,
         timerMinutes,
         showPreview,
+        allowStudentBreakdown,
         questions: {
           create: prepared.map((question, position) => ({
             position,
@@ -446,11 +487,17 @@ export async function classroomRoutes(app: FastifyInstance) {
       where: { id: req.params.quizId, classroomId: req.params.id, classroom: { teacherId: teacher.userId } },
       include: {
         _count: { select: { questions: true } },
-        submissions: { include: { student: { select: { email: true, displayName: true } } }, orderBy: { submittedAt: "desc" } },
+        submissions: {
+          include: {
+            student: { select: { email: true, displayName: true } },
+            answers: { include: { question: true } },
+          },
+          orderBy: { submittedAt: "desc" },
+        },
       },
     });
     if (!quiz) return reply.code(404).send({ error: "not_found", message: "Quiz not found." });
-    return reply.send({ quiz: quizSummary(quiz), scores: quiz.submissions.map(submissionSummary) });
+    return reply.send({ quiz: quizSummary(quiz), scores: quiz.submissions.map((submission) => submissionSummary(submission, true)) });
   });
 
   app.post<{ Body: { joinCode?: string } }>("/api/classrooms/join", async (req, reply) => {
@@ -490,7 +537,10 @@ export async function classroomRoutes(app: FastifyInstance) {
       where: { id: req.params.id, classroom: { members: { some: { studentId: student.userId } } } },
       include: {
         classroom: { select: { name: true } }, questions: { orderBy: { position: "asc" } }, _count: { select: { questions: true } },
-        submissions: { where: { studentId: student.userId }, select: { studentId: true, score: true, totalPoints: true, submittedAt: true } },
+        submissions: {
+          where: { studentId: student.userId },
+          include: { answers: { include: { question: true } } },
+        },
       },
     });
     if (!quiz) return reply.code(404).send({ error: "not_found", message: "Quiz not found." });
@@ -505,7 +555,7 @@ export async function classroomRoutes(app: FastifyInstance) {
         multiSelect: correctAnswersFor(question).length > 1,
       })),
       submission: quiz.submissions[0]
-        ? { ...quiz.submissions[0], submittedAt: quiz.submissions[0].submittedAt.toISOString() }
+        ? submissionSummary(quiz.submissions[0], quiz.allowStudentBreakdown)
         : null,
     });
   });
@@ -524,21 +574,31 @@ export async function classroomRoutes(app: FastifyInstance) {
     const answers = new Map((req.body?.answers ?? []).map((answer) => [answer.questionId, answer]));
     const totalPoints = quiz.questions.reduce((total, question) => total + question.points, 0);
     let score = 0;
+    const submissionAnswers: { questionId: string; selected: string[]; typedAnswer: string | null; pointsEarned: number }[] = [];
     try {
       for (const question of quiz.questions) {
         const answer = answers.get(question.id);
+        let selected: string[] = [];
+        let typedAnswer: string | null = null;
+        let pointsEarned = 0;
         if (question.kind === "fill") {
-          const typedAnswer = answer?.typedAnswer?.trim();
-          if (!typedAnswer) continue;
-          score += question.points * (await gradeClassroomFillAnswer(student.userId, question.prompt, question.answer, typedAnswer) / 100);
+          typedAnswer = answer?.typedAnswer?.trim() || null;
+          if (typedAnswer) {
+            pointsEarned = question.points * (await gradeClassroomFillAnswer(student.userId, question.prompt, question.answer, typedAnswer) / 100);
+            score += pointsEarned;
+          }
         } else {
-          const selected = Array.isArray(answer?.selected)
+          selected = Array.isArray(answer?.selected)
             ? answer.selected
             : answer?.selected
               ? [answer.selected]
               : [];
-          if (answerSetsMatch(selected, correctAnswersFor(question))) score += question.points;
+          if (answerSetsMatch(selected, correctAnswersFor(question))) {
+            pointsEarned = question.points;
+            score += pointsEarned;
+          }
         }
+        submissionAnswers.push({ questionId: question.id, selected, typedAnswer, pointsEarned });
       }
     } catch (error: any) {
       if (error?.code === "quota_exceeded") return reply.code(429).send({ error: "quota_exceeded", message: error.message });
@@ -547,8 +607,17 @@ export async function classroomRoutes(app: FastifyInstance) {
       throw error;
     }
     try {
-      const submission = await prisma.quizSubmission.create({ data: { quizId: quiz.id, studentId: student.userId, score, totalPoints } });
-      return reply.code(201).send({ submission: { studentId: submission.studentId, score: submission.score, totalPoints: submission.totalPoints, submittedAt: submission.submittedAt.toISOString() } });
+      const submission = await prisma.quizSubmission.create({
+        data: {
+          quizId: quiz.id,
+          studentId: student.userId,
+          score,
+          totalPoints,
+          answers: { create: submissionAnswers },
+        },
+        include: { answers: { include: { question: true } } },
+      });
+      return reply.code(201).send({ submission: submissionSummary(submission, quiz.allowStudentBreakdown) });
     } catch (error: any) {
       if (error?.code === "P2002") return reply.code(409).send({ error: "already_submitted", message: "You have already submitted this quiz." });
       throw error;

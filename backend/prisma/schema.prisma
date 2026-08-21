@@ -84,6 +84,7 @@ model ClassroomQuiz {
   hardQuestionCount Int      @default(0)
   timerMinutes      Int      @default(0)
   showPreview       Boolean  @default(true)
+  allowStudentBreakdown Boolean @default(false)
   createdAt         DateTime @default(now())
 
   questions   ClassroomQuizQuestion[]
@@ -105,6 +106,8 @@ model ClassroomQuizQuestion {
   options   String[]
   points    Float          @default(1)
 
+  submissionAnswers QuizSubmissionAnswer[]
+
   @@map("classroom_quiz_questions")
   @@unique([quizId, position])
 }
@@ -119,9 +122,26 @@ model QuizSubmission {
   totalPoints Float
   submittedAt DateTime      @default(now())
 
+  answers    QuizSubmissionAnswer[]
+
   @@map("quiz_submissions")
   @@unique([quizId, studentId])
   @@index([studentId])
+}
+
+model QuizSubmissionAnswer {
+  id           String                 @id @default(uuid())
+  submissionId String
+  questionId   String
+  submission   QuizSubmission         @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  question     ClassroomQuizQuestion  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selected     String[]               @default([])
+  typedAnswer  String?
+  pointsEarned Float                  @default(0)
+
+  @@map("quiz_submission_answers")
+  @@unique([submissionId, questionId])
+  @@index([questionId])
 }
 
 /// Per-user override of a daily AI-usage quota bucket ("generation" | "grading" | "deck_review"),

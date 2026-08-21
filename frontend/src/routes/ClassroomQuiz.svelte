@@ -26,6 +26,11 @@
     ? ""
     : `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`;
 
+  function answerText(answer: string | string[] | null): string {
+    if (Array.isArray(answer)) return answer.length ? answer.join(", ") : "No answer";
+    return answer?.trim() || "No answer";
+  }
+
   function clearTimer() {
     if (timer) clearInterval(timer);
     timer = undefined;
@@ -107,6 +112,20 @@
 {:else if attempt}
   {#if attempt.submission}
     <div class="card-surface done"><h1>{attempt.quiz.title}</h1><p class="muted">{attempt.quiz.classroomName}</p><p class="score">Your score: {Number(attempt.submission.score.toFixed(2))} / {attempt.submission.totalPoints}</p><p class="muted">Submitted {new Date(attempt.submission.submittedAt).toLocaleString()}</p><button class="btn btn-primary" on:click={() => navigate("/classwork")}>Back to classwork</button></div>
+    {#if attempt.submission.breakdown?.length}
+      <section class="card-surface breakdown"><h2>Answer breakdown</h2><p class="muted">See how each question contributed to your score.</p>
+        <ol>
+          {#each attempt.submission.breakdown as item, itemIndex}
+            <li>
+              <div class="breakdown-heading"><strong>Question {itemIndex + 1}</strong><span>{Number(item.pointsEarned.toFixed(2))} / {item.points} points</span></div>
+              <div class="prompt"><Katex text={item.prompt} /></div>
+              <p><strong>Your answer:</strong> <Katex text={answerText(item.studentAnswer)} /></p>
+              <p><strong>Correct answer:</strong> <Katex text={answerText(item.correctAnswer)} /></p>
+            </li>
+          {/each}
+        </ol>
+      </section>
+    {/if}
   {:else if !started}
     <div class="card-surface preview"><h1>{attempt.quiz.title}</h1><p class="muted">{attempt.quiz.classroomName} · {attempt.questions.length} questions</p><p>Review the question formats below. Your answers will be marked after you submit the complete quiz.</p><ol>{#each attempt.questions as item}<li><span class="muted small">{item.kind === "mcq" ? "Multiple choice" : "Fill in the blank"} · {item.points} point{item.points === 1 ? "" : "s"}{item.kind === "mcq" && item.multiSelect ? " · Select all that apply" : ""}</span><div><Katex text={item.prompt} /></div>{#if item.kind === "mcq"}<div class="preview-options">{#each item.options as option}<span><Katex text={option} /></span>{/each}</div>{/if}</li>{/each}</ol><button class="btn btn-primary" on:click={begin}>Start quiz</button></div>
   {:else if question}
@@ -128,5 +147,5 @@
 {/if}
 
 <style>
-  .back{background:none;border:none;color:var(--text-dim);padding:0;margin-bottom:1rem}.question{padding:1.5rem;max-width:720px}.question h1{font-size:1.2rem;margin:0 0 1.25rem}.prompt{font-size:1.1rem;font-weight:600;margin-bottom:1rem}.options{display:grid;gap:.6rem}.option{text-align:left;padding:.75rem .9rem;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text)}.option.selected{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--surface-2))}.actions{display:flex;justify-content:space-between;gap:.6rem;margin-top:1.25rem}.question-status{display:flex;justify-content:space-between;align-items:center;max-width:720px}.question-status p{margin:.25rem 0 .75rem}.timer{color:var(--accent)}.done,.preview{max-width:720px;padding:2rem}.done{text-align:center}.done h1,.preview h1{margin-top:0}.score{color:var(--good);font-size:1.35rem;font-weight:700;margin:1.5rem 0}.preview ol{display:grid;gap:.8rem;padding-left:1.25rem}.preview li{padding:.7rem;border:1px solid var(--border);border-radius:8px}.preview li>div{margin-top:.35rem}.preview-options{display:flex;flex-wrap:wrap;gap:.35rem}.preview-options span{padding:.25rem .45rem;border-radius:5px;background:var(--surface-2);font-size:.9rem}.error{color:var(--bad)}
+  .back{background:none;border:none;color:var(--text-dim);padding:0;margin-bottom:1rem}.question{padding:1.5rem;max-width:720px}.question h1{font-size:1.2rem;margin:0 0 1.25rem}.prompt{font-size:1.1rem;font-weight:600;margin-bottom:1rem}.options{display:grid;gap:.6rem}.option{text-align:left;padding:.75rem .9rem;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text)}.option.selected{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--surface-2))}.actions{display:flex;justify-content:space-between;gap:.6rem;margin-top:1.25rem}.question-status{display:flex;justify-content:space-between;align-items:center;max-width:720px}.question-status p{margin:.25rem 0 .75rem}.timer{color:var(--accent)}.done,.preview{max-width:720px;padding:2rem}.done{text-align:center}.done h1,.preview h1{margin-top:0}.score{color:var(--good);font-size:1.35rem;font-weight:700;margin:1.5rem 0}.breakdown{max-width:720px;padding:1.5rem;margin-top:1.25rem}.breakdown h2{margin-top:0}.breakdown ol{display:grid;gap:.75rem;padding-left:1.25rem}.breakdown li{padding:.85rem;border:1px solid var(--border);border-radius:8px}.breakdown-heading{display:flex;justify-content:space-between;gap:1rem}.breakdown-heading span{color:var(--text-dim);white-space:nowrap}.breakdown .prompt{font-size:1rem;margin:.75rem 0}.breakdown p{margin:.35rem 0;color:var(--text-dim)}.preview ol{display:grid;gap:.8rem;padding-left:1.25rem}.preview li{padding:.7rem;border:1px solid var(--border);border-radius:8px}.preview li>div{margin-top:.35rem}.preview-options{display:flex;flex-wrap:wrap;gap:.35rem}.preview-options span{padding:.25rem .45rem;border-radius:5px;background:var(--surface-2);font-size:.9rem}.error{color:var(--bad)}
 </style>

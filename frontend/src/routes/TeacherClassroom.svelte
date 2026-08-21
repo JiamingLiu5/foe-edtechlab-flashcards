@@ -12,6 +12,7 @@
   } from "@flashcards/shared";
   import { api, ApiError } from "../lib/api";
   import { navigate } from "../lib/router";
+  import { formatUserLabel } from "../lib/userDisplay";
   import Katex from "../lib/Math.svelte";
 
   export let classroomId: string;
@@ -47,11 +48,13 @@
   let requestedHardQuestionCount = 0;
   let timerMinutes = 0;
   let showPreview = true;
+  let allowStudentBreakdown = false;
   let stage: QuizStage = "setup";
   let configuredQuestions: TeacherQuestion[] = [];
   let preparing = false;
   let sending = false;
   let selectedQuiz: ClassroomQuizDTO | null = null;
+  let selectedScore: QuizSubmissionDTO | null = null;
   let scores: QuizSubmissionDTO[] = [];
   let scoresLoading = false;
 
@@ -190,6 +193,7 @@
       hardQuestionCount: manual ? 0 : Math.max(0, Math.floor(Number(requestedHardQuestionCount) || 0)),
       timerMinutes: Math.max(0, Math.floor(Number(timerMinutes) || 0)),
       showPreview,
+      allowStudentBreakdown,
     };
   }
 
@@ -231,6 +235,7 @@
 
   async function viewScores(quiz: ClassroomQuizDTO) {
     selectedQuiz = quiz;
+    selectedScore = null;
     scores = [];
     scoresLoading = true;
     try {
@@ -240,6 +245,22 @@
     } finally {
       scoresLoading = false;
     }
+  }
+
+  function answerText(answer: string | string[] | null): string {
+    if (Array.isArray(answer)) return answer.length ? answer.join(", ") : "No answer";
+    return answer?.trim() || "No answer";
+  }
+
+  function breakdownStatus(pointsEarned: number, points: number): "correct" | "partial" | "incorrect" {
+    if (pointsEarned >= points) return "correct";
+    if (pointsEarned > 0) return "partial";
+    return "incorrect";
+  }
+
+  function closeScores() {
+    selectedQuiz = null;
+    selectedScore = null;
   }
 
   onMount(load);
@@ -274,6 +295,7 @@
         {/if}
         <label>Timer (minutes) <input type="number" min="0" step="1" bind:value={timerMinutes} /><small>Set to 0 for no timer.</small></label>
         <label class="check-row"><input type="checkbox" bind:checked={showPreview} /><span>Show question preview before students start</span></label>
+        <label class="check-row"><input type="checkbox" bind:checked={allowStudentBreakdown} /><span>Allow students to view their answer breakdown after submitting</span></label>
         {#if mode === "mcq" && questionSource === "manual"}
           <div class="manual-editor">
             <div class="manual-heading"><div><h3>Write MCQs</h3><p class="muted small">Enter one or more correct answers, one per line. AI will create three wrong options.</p></div><button class="btn" type="button" on:click={addManualQuestion}>Add question</button></div>
@@ -316,14 +338,33 @@
       {#if quizzes.length === 0}<p class="muted">No quizzes sent yet.</p>{:else}<div class="list">{#each quizzes as quiz}<div class="card-surface row"><div><strong>{quiz.title}</strong><span class="muted">{quiz.mode} · {quiz.questionCount} questions{quiz.timerMinutes ? ` · ${quiz.timerMinutes} min` : ""} · {new Date(quiz.createdAt).toLocaleDateString()}</span></div><button class="btn" on:click={() => viewScores(quiz)}>View scores</button></div>{/each}</div>{/if}
     </section>
     <section><h2>Students</h2>
-      {#if members.length === 0}<p class="muted">Share the join code to add students.</p>{:else}<ul class="students">{#each members as student}<li>{student.displayName ?? student.email}<span>{student.displayName ? student.email : ""}</span></li>{/each}</ul>{/if}
+      {#if members.length === 0}<p class="muted">Share the join code to add students.</p>{:else}<ul class="students">{#each members as student}<li>{formatUserLabel("student", student.email, student.displayName)}</li>{/each}</ul>{/if}
     </section>
   </div>
 
   {#if selectedQuiz}
-    <section class="card-surface scores"><div class="score-heading"><h2>{selectedQuiz.title} scores</h2><button class="btn" on:click={() => selectedQuiz = null}>Close</button></div>
-      {#if scoresLoading}<p class="muted">Loading scores…</p>{:else if scores.length === 0}<p class="muted">No student has submitted this quiz yet.</p>{:else}<table><thead><tr><th>Student</th><th>Score</th><th>Submitted</th></tr></thead><tbody>{#each scores as score}<tr><td>{score.studentDisplayName ?? score.studentEmail}</td><td>{Number(score.score.toFixed(2))} / {score.totalPoints}</td><td>{new Date(score.submittedAt).toLocaleString()}</td></tr>{/each}</tbody></table>{/if}
+    <section class="card-surface scores"><div class="score-heading"><div><h2>{selectedQuiz.title} scores</h2><p class="muted small">{selectedQuiz.allowStudentBreakdown ? "Students can view their answer breakdown." : "Students can only view their total score."}</p></div><button class="btn" on:click={closeScores}>Close</button></div>
+      {#if scoresLoading}<p class="muted">Loading scores…</p>{:else if scores.length === 0}<p class="muted">No student has submitted this quiz yet.</p>{:else}<table><thead><tr><th>Student</th><th>Score</th><th>Submitted</th><th></th></tr></thead><tbody>{#each scores as score}<tr><td>{formatUserLabel("student", score.studentEmail, score.studentDisplayName)}</td><td>{Number(score.score.toFixed(2))} / {score.totalPoints}</td><td>{new Date(score.submittedAt).toLocaleString()}</td><td><button class="btn" disabled={!score.breakdown?.length} on:click={() => selectedScore = score}>{score.breakdown?.length ? "View breakdown" : "Unavailable"}</button></td></tr>{/each}</tbody></table>{/if}
     </section>
+
+    {#if selectedScore}
+      <section class="card-surface breakdown"><div class="score-heading"><div><h3>{formatUserLabel("student", selectedScore.studentEmail, selectedScore.studentDisplayName)} breakdown</h3><p class="muted small">{Number(selectedScore.score.toFixed(2))} / {selectedScore.totalPoints} points</p></div><button class="btn" on:click={() => selectedScore = null}>Close</button></div>
+        {#if selectedScore.breakdown?.length}
+          <ol class="breakdown-list">
+            {#each selectedScore.breakdown as item, itemIndex}
+              <li class="breakdown-item {breakdownStatus(item.pointsEarned, item.points)}">
+                <div class="breakdown-heading"><strong>Question {itemIndex + 1}</strong><span>{Number(item.pointsEarned.toFixed(2))} / {item.points} points</span></div>
+                <div class="breakdown-prompt"><Katex text={item.prompt} /></div>
+                <p><strong>Student answer:</strong> <Katex text={answerText(item.studentAnswer)} /></p>
+                <p><strong>Correct answer:</strong> <Katex text={answerText(item.correctAnswer)} /></p>
+              </li>
+            {/each}
+          </ol>
+        {:else}
+          <p class="muted">This submission was recorded before answer breakdowns were available.</p>
+        {/if}
+      </section>
+    {/if}
   {/if}
 {/if}
 
@@ -336,7 +377,7 @@
   .assignment label { display:grid; gap:.35rem; font-size:.85rem; color:var(--text-dim); }.assignment label small { font-size:.75rem; }.assignment .check-row { display:flex; align-items:center; gap:.45rem; min-height:2.5rem; }.assignment .check-row input { width:auto; }
   .manual-editor { grid-column:1 / -1; display:grid; gap:.75rem; margin-top:.25rem; }.manual-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }.manual-heading h3 { margin:0; }.manual-heading p { margin:.25rem 0 0; }.manual-question { display:grid; grid-template-columns:8rem 1fr 1fr auto; gap:.65rem; align-items:start; padding:.8rem; border:1px solid var(--border); border-radius:9px; }.manual-question > strong { padding-top:.5rem; font-size:.85rem; }.manual-question label { min-width:0; }.remove-question { background:none; border:0; color:var(--text-dim); padding:.5rem 0; cursor:pointer; }.remove-question:hover { color:var(--bad); }
   .preview-heading p { margin:.35rem 0 0; }.total-points { color:var(--accent); font-weight:600; white-space:nowrap; }.preview-list { display:grid; gap:.7rem; padding:0; margin:1rem 0; list-style:none; }.preview-question { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; padding:.85rem 1rem; border:1px solid var(--border); border-radius:10px; }.preview-content { min-width:0; }.front { font-weight:600; margin-bottom:.35rem; }.preview-options { display:grid; gap:.2rem; color:var(--text-dim); font-size:.9rem; }.preview-options div { padding:.25rem .5rem; border-radius:5px; background:var(--surface-2); }.points-control { display:grid; gap:.3rem; min-width:5.5rem; color:var(--text-dim); font-size:.8rem; }.points-control input { width:5.5rem; }.preview-actions { display:flex; justify-content:flex-end; gap:.6rem; }
-  .columns { display:grid; grid-template-columns:1.4fr 1fr; gap:1.5rem; }.list { display:grid; gap:.7rem; }.row { display:flex; align-items:center; justify-content:space-between; gap:.75rem; padding:.85rem 1rem; }.row span { display:block; font-size:.85rem; margin-top:.2rem; }.students { padding:0; margin:0; list-style:none; }.students li { padding:.65rem 0; border-bottom:1px solid var(--border); }.students span { display:block; color:var(--text-dim); font-size:.8rem; }.scores { padding:1.25rem; margin-top:1.5rem; }.scores table { width:100%; border-collapse:collapse; }.scores th,.scores td { padding:.65rem; text-align:left; border-bottom:1px solid var(--border); }.error { color:var(--bad); }
+  .columns { display:grid; grid-template-columns:1.4fr 1fr; gap:1.5rem; }.list { display:grid; gap:.7rem; }.row { display:flex; align-items:center; justify-content:space-between; gap:.75rem; padding:.85rem 1rem; }.row span { display:block; font-size:.85rem; margin-top:.2rem; }.students { padding:0; margin:0; list-style:none; }.students li { padding:.65rem 0; border-bottom:1px solid var(--border); }.scores,.breakdown { padding:1.25rem; margin-top:1.5rem; }.scores table { width:100%; border-collapse:collapse; }.scores th,.scores td { padding:.65rem; text-align:left; border-bottom:1px solid var(--border); }.breakdown h3 { margin:0; }.breakdown-heading { display:flex; justify-content:space-between; gap:1rem; }.breakdown-heading span { color:var(--text-dim); white-space:nowrap; }.breakdown-list { display:grid; gap:.75rem; padding:0; margin:1rem 0 0; list-style:none; }.breakdown-item { padding:1rem; border-left:4px solid var(--border); background:var(--surface-2); }.breakdown-item.correct { border-left-color:var(--good); }.breakdown-item.partial { border-left-color:var(--warn); }.breakdown-item.incorrect { border-left-color:var(--bad); }.breakdown-prompt { margin:.65rem 0; font-weight:600; }.breakdown-item p { margin:.35rem 0 0; color:var(--text-dim); }.error { color:var(--bad); }
   @media(max-width:800px){.assignment form{grid-template-columns:repeat(2,minmax(0,1fr))}.manual-question{grid-template-columns:1fr 1fr}.manual-question > strong{grid-column:1 / -1}.columns{grid-template-columns:1fr}}
-  @media(max-width:560px){.assignment form,.preview-question,.manual-question{grid-template-columns:1fr;display:grid}.heading,.preview-heading,.manual-heading{flex-direction:column}.manual-question > strong{grid-column:auto}.scores{overflow:auto}}
+  @media(max-width:560px){.assignment form,.preview-question,.manual-question{grid-template-columns:1fr;display:grid}.heading,.preview-heading,.manual-heading,.score-heading{flex-direction:column}.manual-question > strong{grid-column:auto}.scores{overflow:auto}}
 </style>

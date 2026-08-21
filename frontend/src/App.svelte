@@ -4,6 +4,7 @@
   import { currentPath, matchRoute, navigate } from "./lib/router";
   import { currentUser, refreshSession } from "./lib/auth";
   import { api } from "./lib/api";
+  import { formatUserLabel } from "./lib/userDisplay";
 
   import Login from "./routes/Login.svelte";
   import DeckLibrary from "./routes/DeckLibrary.svelte";
@@ -61,6 +62,7 @@
   $: isAdmin = $currentUser?.role === "admin";
   $: isTeacher = $currentUser?.role === "teacher";
   $: isStudent = $currentUser?.role === "student";
+  $: currentUserLabel = $currentUser ? formatUserLabel($currentUser.role, $currentUser.email, $currentUser.displayName) : "";
 
   $: deckIdParams = matchRoute("/decks/:id", path);
   $: addCardsParams = matchRoute("/decks/:id/add-cards", path);
@@ -170,7 +172,7 @@
       {#if isAdmin}
         <button class="btn" on:click={() => navigate("/admin")}>Admin</button>
       {/if}
-      <span class="muted">{$currentUser?.email}</span>
+      <span class="muted">{currentUserLabel}</span>
       <button class="btn" on:click={logout}>Sign out</button>
     </header>
     <main>

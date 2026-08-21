@@ -197,6 +197,7 @@ export interface ClassroomQuizDTO {
   hardQuestionCount: number;
   timerMinutes: number;
   showPreview: boolean;
+  allowStudentBreakdown: boolean;
   submission: QuizSubmissionDTO | null;
 }
 
@@ -212,6 +213,7 @@ export interface QuizConfiguration {
   hardQuestionCount: number;
   timerMinutes: number;
   showPreview: boolean;
+  allowStudentBreakdown: boolean;
 }
 
 export interface ClassroomQuizQuestionDraftDTO {
@@ -231,6 +233,17 @@ export interface QuizSubmissionDTO {
   score: number;
   totalPoints: number;
   submittedAt: string;
+  breakdown?: QuizQuestionBreakdownDTO[];
+}
+
+export interface QuizQuestionBreakdownDTO {
+  questionId: string;
+  prompt: string;
+  kind: QuizQuestionKind;
+  studentAnswer: string | string[] | null;
+  correctAnswer: string | string[];
+  points: number;
+  pointsEarned: number;
 }
 
 export interface ClassroomQuizQuestionDTO {
