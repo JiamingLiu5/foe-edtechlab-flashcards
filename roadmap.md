@@ -13,6 +13,18 @@ The project should make it easy for students to:
 
 Teachers should be able to create useful classroom quizzes, share them with a class, and understand participation and performance without adding unnecessary administration.
 
+## Roadmap potentials
+
+The roadmap can be understood through five connected development areas:
+
+- **Preliminary deployment approach** — establish staging and production environments, repeatable deployment, backups, monitoring, recovery procedures, and a safe release process.
+- **Testing and evaluation** — verify critical user journeys, accessibility, security, AI quality, Anki compatibility, usability, and early learning signals.
+- **Data analytics integration** — collect privacy-conscious product-health events and report study activity, AI workflow quality, classroom engagement, reliability, and support burden.
+- **Pilot and feedback** — run formative usability sessions followed by a small consenting student/teacher pilot, then use structured feedback and evidence to reprioritise the backlog.
+- **Robust user interface and integration development** — improve responsive and accessible workflows, strengthen study and classroom experiences, and pursue integrations such as Anki import or institutional SSO only when pilot evidence supports them.
+
+The detailed evaluation protocol is in [evaluation_plan.md](./evaluation_plan.md).
+
 ## Current baseline
 
 The following capabilities are implemented:
@@ -166,4 +178,3 @@ Every pilot release should satisfy:
 - export has been tested with the target Anki release;
 - backup freshness and restore readiness are known;
 - no unresolved P0 security, privacy, correctness, or data-loss issue is accepted.
-
