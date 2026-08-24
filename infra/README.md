@@ -1,110 +1,108 @@
-# Deploying to your Linux server
+# Deploying Flashcards with Docker Compose
 
-This assumes Ubuntu LTS (or similar) with Docker Engine + the Compose plugin installed
-(`docker --version` and `docker compose version` should both work).
+This guide targets an Ubuntu LTS server (or similar) with Docker Engine and the Compose plugin installed:
+
+```sh
+docker --version
+docker compose version
+```
+
+The production-like stack contains Caddy, the frontend, Fastify backend, generation worker, PostgreSQL, and Redis. Caddy serves the built frontend and proxies `/api/*` to the backend.
 
 ## 1. Get the code onto the server
 
-```bash
+```sh
 sudo mkdir -p /opt/flashcards
-sudo chown $USER /opt/flashcards
+sudo chown "$USER" /opt/flashcards
 git clone <your-repo-url> /opt/flashcards
 cd /opt/flashcards/infra
 ```
 
-## 2. Configure environment
+## 2. Configure the environment
 
-```bash
+```sh
 cp .env.example .env
 ```
 
-Edit `.env` and fill in:
+Edit `infra/.env` and set at least:
 
-- `APP_DOMAIN` / `APP_ORIGIN` — your server's DNS name. Caddy needs a real domain
-  pointing at the server to obtain a Let's Encrypt certificate. For a quick local
-  test without DNS, see "Testing without a domain" below.
-- `POSTGRES_PASSWORD`, `SESSION_SECRET` — generate with `openssl rand -hex 32`.
-- `ANTHROPIC_API_KEY` — used for card generation and self-check grading.
-- `GEMINI_API_KEY` — used for the PDF OCR/transcription step (Gemini 2.5 Flash
-  Lite), ahead of the Claude generation call. Get one from Google AI Studio.
+- `APP_DOMAIN` and `APP_ORIGIN` to the server's public DNS name. Caddy needs a real DNS record to obtain a Let's Encrypt certificate.
+- `POSTGRES_PASSWORD` and `SESSION_SECRET` to random values. Generate a session secret with `openssl rand -hex 32`.
+- `DATABASE_URL` to use the same database name, user, password, and service host as the Postgres settings.
+- `GEMINI_API_KEY`, which is required for PDF OCR and is also the fallback AI provider.
+- `ANTHROPIC_API_KEY` if Claude should be used for the configured generation/grading tasks; it is optional.
+- `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and optionally `ADMIN_NAME` if an initial admin account should be bootstrapped automatically.
 
-## 3. Bring the stack up
+The environment file also controls upload limits, AI model names, and daily quotas. Keep it outside version control; the repository's `.gitignore` is expected to exclude populated local environment files.
 
-```bash
-docker compose up -d --build
+## 3. Start the stack
+
+From the repository root:
+
+```sh
+docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-This builds and starts `proxy` (Caddy, TLS), `backend` (API — runs
-`prisma migrate deploy` on boot, see `backend/Dockerfile`), `worker`
-(PDF generation jobs), `db` (Postgres), `redis`. First boot will take a
-few minutes while images build and Caddy obtains its certificate.
+The backend container runs `prisma migrate deploy` during startup. The first build may take several minutes because native dependencies are compiled for the backend and worker images, and Caddy may need to obtain its certificate.
 
-Check it's healthy:
+Check the application and logs:
 
-```bash
-curl https://$APP_DOMAIN/api/health   # -> {"ok":true}
-docker compose logs -f backend worker
+```sh
+curl https://$APP_DOMAIN/api/health
+docker compose -f infra/docker-compose.yml logs -f backend worker
 ```
+
+The health endpoint should return `{"ok":true}`.
 
 ## 4. Survive a reboot
 
-```bash
-sudo cp flashcards.service /etc/systemd/system/
+The repository includes a systemd unit. Install it after verifying the Compose deployment:
+
+```sh
+sudo cp infra/flashcards.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now flashcards
+sudo systemctl status flashcards
 ```
 
-## Updating after a code change
+## 5. Update the deployment
 
-```bash
+The current deployment process is manual:
+
+```sh
 cd /opt/flashcards
 git pull
-cd infra
-docker compose up -d --build
+docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-`prisma migrate deploy` runs automatically as part of the backend container's
-startup command, so new migrations apply on the next `up -d --build`.
+The backend applies any pending Prisma migrations on startup. Check `/api/health` and the backend/worker logs after the update.
 
-## Testing without a domain
+## 6. Testing without a public domain
 
-If you're trying this out before DNS is pointed at the box, edit
-`infra/Caddyfile` and replace the `{$APP_DOMAIN}` line with:
+For private HTTP testing, replace the `{$APP_DOMAIN}` block in `infra/Caddyfile` with a `:80` block and set:
 
-```
-:80 {
-	...
-}
+```dotenv
+APP_DOMAIN=:80
+APP_ORIGIN=http://<server-ip>
 ```
 
-(drop the HTTPS/ACME bits) and set `APP_ORIGIN=http://<server-ip>` in `.env`.
-Switch back to the real domain block before exposing this beyond your own
-testing — session cookies are set `secure` in production and won't work
-over plain HTTP from a browser's perspective once `NODE_ENV=production`
-either way, so this mode is for `curl`/local testing, not real logins.
+Do not expose this configuration publicly. Production cookies use secure settings, and a real HTTPS origin is required for a normal login deployment.
 
-## Backups
+## 7. Backups
 
-Nightly `pg_dump`, shipped off-box, isn't wired up yet (design.md §8) — for
-now, back up manually:
+Automated off-box backups are not wired into this repository. Take a manual compressed dump while the stack is running:
 
-```bash
-docker compose exec db pg_dump -U flashcards flashcards | gzip > backup-$(date +%F).sql.gz
+```sh
+docker compose -f infra/docker-compose.yml exec db \
+  pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > "backup-$(date +%F).sql.gz"
 ```
 
-## What's intentionally out of scope for this prototype
+Store the dump outside the server and periodically test restoring it. Protect it as sensitive application data.
 
-- Real Microsoft Entra ID SSO — this build uses email + password accounts
-  (restricted to `@ic.ac.uk` / `@imperial.ac.uk`) as the fallback from
-  design.md §7, since Entra app registration wasn't available. Swapping in
-  Entra ID later means adding an OAuth module under `backend/src/modules/auth/`
-  and pointing the frontend's login screen at it; the session-cookie plumbing
-  underneath doesn't change.
-- A real Anki `.apkg` export — `/api/decks/:id/export/anki` currently returns
-  a tab-separated `.txt` file, which Anki's *File > Import* handles natively.
-  A binary `.apkg` (SQLite-based) exporter is a reasonable later upgrade.
-- Automated nightly backups / off-box shipping.
-- The GitHub Actions SSH deploy step (`.github/workflows/ci.yml` builds and
-  publishes images to GHCR; wiring that into an automatic deploy to this
-  server is left as a manual `git pull && docker compose up -d --build` for
-  now).
+## 8. Operational limits and current exclusions
+
+- Microsoft Entra SSO is not implemented; use the approved email/password flow.
+- AI imports require external model credentials and a running worker.
+- Uploaded PDFs are retained as deck sources for later AI review; confirm the pilot's retention and copyright policy before production use.
+- The Anki endpoint now generates a native `.apkg` package containing a SQLite collection; import compatibility with the pilot's exact Anki Desktop release still needs verification.
+- Automated CI/CD and automatic deploys are not included. Updates remain a reviewed manual `git pull` and Compose rebuild.

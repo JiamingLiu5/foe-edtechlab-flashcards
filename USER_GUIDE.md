@@ -1,10 +1,10 @@
-# Flashcards user guide
+# Flashcards student user guide
 
 This guide explains how to turn your course material into flashcards and use them for revision.
 
 ## The revision flow
 
-1. Sign in.
+1. Create an account and wait for approval, then sign in.
 2. Create a deck for a topic or module.
 3. Choose how to add content.
 4. Generate cards when using an AI source.
@@ -13,9 +13,11 @@ This guide explains how to turn your course material into flashcards and use the
 
 Return to the final step whenever you revise, and add or edit cards as your understanding develops.
 
-## 1. Sign in
+## 1. Create an account and sign in
 
-Sign in with your university account. The **Your decks** page is your starting point and lists all your revision decks.
+Select **Need an account? Create one**, enter your approved Imperial email address, choose **Student**, and set a password of at least eight characters. An administrator must approve a new account before it can sign in. The application accepts the email domains configured by the deployment, which are `@ic.ac.uk` and `@imperial.ac.uk` by default.
+
+After approval, sign in with the same email address and password. The **Your decks** page is your starting point and lists all your revision decks.
 
 ## 2. Create a deck
 
@@ -36,7 +38,7 @@ For pasted text, PDFs, and links, the system uses AI to prepare draft cards. You
 
 ## 4. Generate cards
 
-For an AI source, select **Draft cards with AI** (or upload/import the source). The app creates a generation job and takes you to the **AI generating** page.
+For an AI source, select **Draft cards with AI** (or upload/import the source). The app creates a generation job and takes you to the **AI generating** page. Jobs normally move through `queued`, `extracting`, `generating`, and `ready`; a failed job displays an error to resolve before retrying.
 
 Generated cards are drafts: they are not added to your deck automatically. This lets you check their wording and accuracy first.
 
@@ -47,6 +49,8 @@ On the AI review page, work through each draft:
 - **Accept** adds the draft to the deck.
 - **Edit** lets you change the question or answer before accepting it.
 - **Discard** removes a draft you do not want.
+
+Use **Accept all** when every remaining draft has been checked. For cards created by an import, the app asks whether each accepted card should be included in quizzes. For an existing deck review, accepting a suggestion applies the reviewed change to the original card.
 
 When you accept a newly generated card, choose whether it should be available in quizzes. You can also select **AI review** from an existing deck to have AI identify potential factual or clarity issues; review any suggested changes before accepting them.
 
@@ -85,3 +89,11 @@ Select **Self-check** to answer each card in your own words. Submit your respons
 - Use **Edit card** to update a question, answer, or tags.
 - Use **Delete card** to remove a card permanently.
 - Use **Export (Anki)** to download your deck for Anki.
+
+## Join a classroom
+
+If a teacher gives you a classroom join code, open **Classwork**, enter the code under **Join a classroom**, and select **Join classroom**. Assigned quizzes appear on this page.
+
+Select **Take quiz** to begin an assignment. If the teacher enabled a preview, read the question set before selecting **Start quiz**. Answer each question, move back or forward as needed, and select **Submit quiz** at the end. A submitted assignment can currently be submitted once; use **View score** to see the result afterward.
+
+The teacher may use multiple-choice questions with more than one correct answer. The question will indicate when all correct options should be selected. A timer, if configured, is shown during the quiz.

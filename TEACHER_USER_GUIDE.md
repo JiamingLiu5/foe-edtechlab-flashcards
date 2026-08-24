@@ -93,6 +93,7 @@ For deck-based quizzes, set:
 - **Difficulty**: include cards of any difficulty or select Easy, Medium, or Hard.
 - **Hard questions**: reserve a number of hard questions within the total question count.
 - **Timer**: enter the number of minutes, or leave it at `0` for no timer.
+- **Answer breakdown**: enable **Allow students to view their answer breakdown after submitting** if students should see their answer, the correct answer, and points per question. Otherwise, they see only their total score.
 
 Leave **Show question preview before students start** selected if you want students to see the question set before they begin. If a timer is enabled, it starts when the student starts the quiz after the preview. With preview disabled, the quiz starts as soon as the student opens it.
 
@@ -112,7 +113,7 @@ During the quiz:
 - Correctness is not revealed while they are answering.
 - A timer counts down when one has been configured.
 
-Students select **Submit quiz** after answering the final question. Each student can submit a particular assignment once. After submission, they can see their score from **Classwork**.
+Students select **Submit quiz** after answering the final question. Each student can submit a particular assignment once. After submission, they can see their score from **Classwork** and, when enabled for that assignment, an answer-by-answer breakdown.
 
 ## 7. View scores
 

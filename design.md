@@ -1,240 +1,166 @@
-# Flashcard Activity — Fullstack System Design
+# Flashcards — current system design
+
+This document describes the implementation in the repository as of 21 August 2026. It is intentionally a current-state design, not a list of future intentions.
 
 ## 1. Scope and constraints
 
-- **Audience**: Imperial students and staff, identified by `@ic.ac.uk` / `@imperial.ac.uk` email — every survey respondent used one, and it's the natural trust boundary for who gets an account.
-- **Scale**: a departmental tool, not a public product — hundreds to low thousands of users, bursty around exam periods. This rules out microservices, Kubernetes, and multi-region infrastructure; a single well-run Linux server carries this comfortably. 
-- **Money-sensitive calls**: PDF-based generation, gap-filling suggestions, and typed-answer grading all call an LLM per request(I plan to try with ocr unlimited which is free of use with certain range). Claude usage is also balanced where I will trade-off between sonnet and haiku.
+- **Audience:** Imperial students, teachers, and administrators. Sign-up is restricted to the domains in `ALLOWED_EMAIL_DOMAINS` (`ic.ac.uk,imperial.ac.uk` by default).
+- **Scale:** a departmental application serving hundreds to low thousands of users, with heavier use near exams.
+- **Deployment:** a modular monolith split into an HTTP API and a background worker, backed by PostgreSQL and Redis and fronted by Caddy.
+- **AI cost and reliability:** AI calls are quota-controlled, asynchronous where appropriate, and provider-configurable. Gemini is required for PDF OCR; Claude is optional and Gemini is the fallback for generation and grading.
 
-## 2. Architecture overview
+## 2. Runtime architecture
 
 ```mermaid
 flowchart LR
-  subgraph Client["Browser"]
-    SPA["Frontend SPA"]
+  Browser[Browser — Svelte SPA]
+
+  subgraph Docker[Docker Compose deployment]
+    Proxy[Caddy — TLS, static files, /api routing]
+    API[Fastify API — Node/TypeScript]
+    Worker[Generation worker — Node/TypeScript]
+    DB[(PostgreSQL)]
+    Redis[(Redis — queue and quotas)]
+    Uploads[(Upload volume)]
   end
 
-  subgraph Server["Linux server (Docker)"]
-    Proxy["Reverse proxy — Caddy\n(TLS termination, static files, /api/* routing)"]
-    API["Backend API — Node/TypeScript"]
-    Worker["Generation worker\n(PDF parse, AI calls, grading)"]
-    DB[("PostgreSQL")]
-    Queue[("Redis — job queue + rate limits")]
-    Files["Upload volume\n(PDFs, short-lived)"]
-  end
+  Gemini[Google Gemini]
+  Claude[Anthropic Claude — optional]
 
-  AI["Claude API\n(generation, grading)"]
-  IdP["Imperial identity\n(Microsoft Entra ID)"]
-
-  SPA -- HTTPS --> Proxy
-  Proxy --> SPA
-  Proxy -- "/api/" --> API
+  Browser -->|HTTPS| Proxy
+  Proxy -->|static frontend| Browser
+  Proxy -->|/api/*| API
   API --> DB
-  API --> Queue
-  Queue --> Worker
-  Worker --> Files
-  Worker --> AI
+  API --> Redis
+  Redis --> Worker
   Worker --> DB
-  API -- OAuth --> IdP
+  Worker --> Uploads
+  Worker --> Gemini
+  Worker --> Claude
 ```
 
-One origin, one TLS certificate: the proxy serves the built frontend directly and forwards `/api/*` to the backend, so the browser never talks cross-origin and CORS configuration mostly disappears.
+In local development, `infra/docker-compose.dev.yml` starts only PostgreSQL and Redis. The frontend, API, and worker run from the npm workspaces. In the production-like Compose file, Caddy builds and serves the frontend, while the backend and worker use separate containers.
 
 ### Components
 
 | Component | Responsibility |
 |---|---|
-| Frontend SPA | Deck library, card builder, study/quiz/self-check modes, AI review (diff) screen |
-| Reverse proxy | TLS, HTTP→HTTPS redirect, static asset serving, request routing |
-| Backend API | Auth, decks/cards CRUD, SRS scheduling, review submission, export, job creation |
-| Generation worker | PDF text extraction, prompts to Claude, staged AI-draft writes, answer grading |
-| PostgreSQL | Users, decks, cards, review history, generation jobs and drafts |
-| Redis | Job queue between API and worker; per-user rate-limit counters |
-| Upload volume | Raw PDFs, deleted once a generation job's drafts are resolved |
+| Frontend SPA | Authentication, student decks, card editing, Study, Quiz, Self-check, AI review, classrooms, admin screens, and onboarding guidance |
+| Caddy | TLS termination, static frontend serving, SPA fallback, and `/api/*` reverse proxying |
+| Fastify API | Authentication, authorization, CRUD, scheduling, quiz setup/submission, AI job creation, export, and admin operations |
+| Generation worker | PDF extraction/OCR, text and URL drafting, deck review, AI grading, and distractor generation |
+| PostgreSQL | Users, decks, source material, cards, AI drafts, study reviews, classrooms, quizzes, submissions, and quota overrides |
+| Redis/BullMQ | Generation job queue and daily usage counters |
+| Upload volume | Retained PDF sources used to ground later deck review; paths are configured with `UPLOAD_DIR` |
 
-## 3. Frontend design
+## 3. Frontend
 
-**Shape**: a client-rendered SPA, not server-rendered. Everything lives behind login, so there's no SEO reason to render on the server, and a pure SPA keeps the backend a clean API with no templating concerns.
+The browser application is a client-rendered Svelte SPA using TypeScript, Vite, and hash-based routing. API response types are shared through the `shared` workspace.
 
-**Stack**: Vite + Svelte, TypeScript. Reasoning: the current app's whole ethos is "self-contained and light" — a full React+Next stack would fight that. Svelte compiles away its runtime, keeps bundle size close to the vanilla-JS original, and is expressive enough for the state this app now needs (auth state, async job polling, per-card diff review) without a heavy component-framework tax. Plain vanilla JS, which worked for one file, stops scaling once there's routing, auth, and multi-screen async flows.
+### Main screens
 
-**Screens** (each maps to a README feature group):
+- **Deck library:** create, open, and delete student decks; view card counts, due cards, and attention indicators.
+- **Add cards:** create cards manually, paste study text, upload a PDF, or provide a public URL. Manual cards support tags and a quiz-inclusion choice.
+- **AI review:** inspect generated or reviewed drafts and accept, accept all, edit, or discard them before they change the deck.
+- **Deck detail:** search and filter the question bank by text, tag, or difficulty; edit/delete cards; launch practice modes; export JSON or Anki.
+- **Study:** review due cards with Again/Hard/Good/Easy outcomes, interval previews, configurable settings, and an All done retirement action.
+- **Quiz:** create self-study multiple-choice, fill-in-the-blank, or mixed sessions with optional difficulty and hard-question selection.
+- **Self-check:** submit a typed answer for AI feedback, a score, missing points, and the reference answer.
+- **Classwork:** students join classrooms with a code, take assigned quizzes, and view submitted scores.
+- **Teacher dashboard/classroom:** teachers manage classrooms, quiz decks, question sources, previews, timers, points, and scores.
+- **Admin:** administrators approve, reject, deactivate, reactivate, and assign roles to users; inspect decks; and set per-user quota overrides.
 
-- **Deck library** — grid of the user's decks, card count, due-for-review count, forgotten-cards indicator per deck.
-- **Card builder** — manual entry and bulk paste/upload, unchanged in spirit from today.
-- **PDF import** — drag-and-drop upload, job-status view (queued → extracting → generating → ready), hands off to the AI review screen.
-- **AI review (diff)** — the guardrail surface: each AI-touched card shown as before/after, with per-card Accept / Edit / Discard. No AI output reaches a deck without passing through this screen.
-- **Study mode** — flip cards, SRS-scheduled ("due today: 12"), replaces manual Got it/Review again with real interval scheduling under the hood while keeping the same buttons as the affordance.
-- **Quiz mode** — unchanged MCQ format from the current build.
-- **Self-check mode** — typed answer, submitted to the backend for AI grading, returns a score and what was missing.
-- **Export** — one action, produces an Anki-compatible file for the current deck.
+KaTeX rendering is used for card, question, answer, and feedback content containing supported LaTeX-style delimiters.
 
-**State/data**: a thin API client with typed responses (see §6, shared types); no heavy global-state library needed at this scale — page-local state plus a small auth/session store covers it.
+## 4. Backend and API
 
-**Async jobs**: the PDF-import and grading calls are not instant. The frontend polls a job-status endpoint (2–3s interval) rather than holding a request open; simplest thing that works reliably through a proxy. Server-sent events are a reasonable later upgrade, not a launch requirement.
+The backend is a Fastify modular monolith. Authorization is enforced server-side with `requireUser`, `requireStudent`, `requireTeacher`, and `requireAdmin` guards; frontend route visibility is only a convenience.
 
-## 4. Backend design
+The main API groups are:
 
-**Stack**: Node.js + TypeScript, Fastify. Reasoning: same language as the frontend, so request/response types can be shared instead of duplicated (see §6); Fastify's built-in schema validation gives request validation "for free" at the framework level rather than as bolted-on middleware, and its overhead is low enough to be a non-issue at this scale. Express is the safer, more-documented fallback if the team prefers it — the design doesn't depend on which one is picked.
-
-**Structure**: a modular monolith, not microservices — one deployable backend, internally organized by domain (`auth`, `decks`, `cards`, `generation`, `study`, `export`), each module owning its routes, validation, and DB access. This gets the code-organization benefit of separation without the operational cost of running and coordinating multiple services for a tool this size.
-
-**API surface** (representative, not exhaustive):
-
-| Route | Purpose |
+| Area | Representative routes |
 |---|---|
-| `POST /api/auth/callback` | Complete Microsoft OAuth login |
-| `GET /api/decks` | List the current user's decks |
-| `POST /api/decks` / `PATCH /api/decks/:id` | Create/edit a deck |
-| `GET/POST /api/decks/:id/cards` | List/add cards directly |
-| `POST /api/decks/:id/generate` | Upload a PDF, enqueue a generation job |
-| `GET /api/generation-jobs/:id` | Poll job status and resulting AI drafts |
-| `POST /api/generation-jobs/:id/drafts/:draftId/accept` | Accept (optionally edited) draft into the deck |
-| `POST /api/generation-jobs/:id/drafts/:draftId/discard` | Drop a draft |
-| `GET /api/decks/:id/study/next` | Next due card per the SRS schedule |
-| `POST /api/reviews` | Submit a study outcome, updates SRS state |
-| `POST /api/self-check/grade` | Grade a typed answer against a card |
-| `GET /api/decks/:id/export/anki` | Download an Anki-compatible export |
+| Auth | `POST /api/auth/signup`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` |
+| Decks/cards | `GET/POST /api/decks`, `GET/PATCH/DELETE /api/decks/:id`, `GET/POST /api/decks/:id/cards`, `PATCH/DELETE /api/decks/:id/cards/:cardId` |
+| AI jobs | `POST /api/decks/:id/generate`, `POST /api/decks/:id/generate-text`, `POST /api/decks/:id/generate-url`, `POST /api/decks/:id/review`, `GET /api/generation-jobs/:id` |
+| Draft decisions | `POST /api/generation-jobs/:id/drafts/accept-all`, `POST .../drafts/:draftId/accept`, `POST .../drafts/:draftId/discard` |
+| Study | `GET /api/decks/:id/study/next`, `POST /api/reviews`, `GET /api/account/study-settings`, `PUT /api/account/study-settings` |
+| Self-study quiz | `GET /api/decks/:id/quiz`, `POST /api/self-check/grade` |
+| Export | `GET /api/decks/:id/export/json`, `GET /api/decks/:id/export/anki` |
+| Classrooms | `/api/classrooms/*` and `/api/classroom-quizzes/*` for creation, joining, configuration, scores, and submissions |
+| Admin | `/api/admin/*` for user lifecycle, deck inspection, and quota overrides |
+| Health | `GET /api/health` returns `{ "ok": true }` |
 
-**Generation worker**: a separate process from the API (same codebase, different entrypoint), consuming jobs off Redis. Keeping it out of the request/response cycle means an AI call taking 10–30 seconds never ties up an API worker thread or a browser's open connection, and it's the natural place to enforce per-user generation quotas before spending on a Claude call.
+## 5. AI pipeline and guardrails
 
-## 5. AI integration and guardrails
+1. The API validates ownership, input size, source type, and the user's quota before creating a job.
+2. PDF jobs store the source and pass it through the worker for extraction/OCR. Text and URL jobs use their supplied content.
+3. The worker asks the configured provider for structured draft cards, including source citations and estimated difficulty where available.
+4. Drafts are stored in `AiDraft`, never directly in `Card`.
+5. The user reviews each draft. Accepting creates a new card or applies a reviewed change to the original card; discarding leaves the deck unchanged.
 
-**Provider split**: PDF OCR/transcription runs on Gemini 2.5 Flash Lite (cheap, generous free tier for the slide-transcription step), producing slide-marked plain text (`=== Slide N ===`). That text is then handed to Claude (Anthropic) for the actual card drafting — Claude's outputs can be constrained to cite the source slide a card was drawn from, which is what makes the guardrails below enforceable rather than aspirational. Splitting the pipeline this way keeps the expensive, quality-sensitive step (grounded generation) on Claude while the high-volume, lower-stakes step (OCR) runs on the cheaper model.
+The provider selection is configurable through `ANTHROPIC_*` and `GEMINI_*` environment variables. Gemini is the required PDF OCR provider. Claude is preferred when its key is present for configured generation/grading tasks; Gemini is used as fallback.
 
-**The non-negotiable rule, architecturally enforced, not just prompted**: AI output is never written to the `cards` table. It is written to a separate `ai_drafts` table, tied to a `generation_jobs` row, and only a user action (`.../accept`) copies a draft into `cards` — at which point the draft is marked resolved. This is a schema-level guarantee, not a UI convention that a future feature could bypass.
-
-Mapped to the requirements the survey produced ([README §2](./README.md#2-ai-assisted-generation--with-guardrails)):
-
-| Requirement | How the architecture enforces it |
-|---|---|
-| No hallucinated facts | Generation prompt requires each draft card cite the source slide span; drafts without a grounded citation are flagged, not silently accepted |
-| Match the course's voice | Prompt is built from the deck's own existing cards as style reference, not a generic template |
-| Stay concise | Length constraint enforced in the generation prompt and re-checked before a draft is stored |
-| Render formulae | Draft text preserves LaTeX-style math markup; frontend renders it with KaTeX in both the diff view and study/quiz views |
-| Visible diffs | `ai_drafts` stores both the generated text and (on edit) the user's edited version, so the diff view has real before/after data, not a reconstruction |
-| Suggest, don't overwrite | Gap-filling on an existing deck creates new `ai_drafts` rows against that deck; it never modifies existing `cards` rows directly |
-
-**Cost control**: per-user daily quotas on generation jobs and grading calls, enforced in Redis before a job is enqueued or a grading call is made. Budget ownership (who sets the quota, who watches spend) is an open decision for the team, not something this design can resolve — flagged in §11.
+Daily usage buckets include generation, grading, deck review, PDF pages, generated cards, and MCQ distractors. Defaults are configured in the environment and can be overridden for individual users by an administrator.
 
 ## 6. Data model
+
+The Prisma schema is the source of truth. Its main relationships are:
 
 ```mermaid
 erDiagram
   USER ||--o{ DECK : owns
-  DECK ||--o{ CARD : contains
-  DECK ||--o{ GENERATION_JOB : "generated via"
-  GENERATION_JOB ||--o{ AI_DRAFT : produces
-  AI_DRAFT }o--|| CARD : "becomes (on accept)"
   USER ||--o{ REVIEW : performs
-  CARD ||--o{ REVIEW : "reviewed in"
-
-  USER {
-    uuid id
-    string email
-    string display_name
-    timestamp created_at
-  }
-  DECK {
-    uuid id
-    uuid owner_id
-    string name
-    timestamp created_at
-  }
-  CARD {
-    uuid id
-    uuid deck_id
-    text front
-    text back
-    string source
-    timestamp created_at
-  }
-  GENERATION_JOB {
-    uuid id
-    uuid deck_id
-    uuid requested_by
-    string status
-    string source_filename
-    timestamp created_at
-  }
-  AI_DRAFT {
-    uuid id
-    uuid job_id
-    text generated_front
-    text generated_back
-    text edited_front
-    text edited_back
-    string source_citation
-    string status
-  }
-  REVIEW {
-    uuid id
-    uuid user_id
-    uuid card_id
-    timestamp reviewed_at
-    string outcome
-    float ease_factor
-    int interval_days
-    timestamp due_at
-  }
+  USER ||--o{ GENERATION_JOB : requests
+  USER ||--o{ CLASSROOM : teaches
+  USER ||--o{ CLASSROOM_MEMBER : joins
+  DECK ||--o{ CARD : contains
+  DECK ||--o{ DECK_SOURCE : has
+  DECK ||--o{ GENERATION_JOB : receives
+  GENERATION_JOB ||--o{ AI_DRAFT : produces
+  CARD ||--o{ REVIEW : receives
+  CARD ||--o{ AI_DRAFT : may_be_reviewed
+  CLASSROOM ||--o{ CLASSROOM_MEMBER : has
+  CLASSROOM ||--o{ CLASSROOM_QUIZ : sends
+  CLASSROOM_QUIZ ||--o{ CLASSROOM_QUIZ_QUESTION : contains
+  CLASSROOM_QUIZ ||--o{ QUIZ_SUBMISSION : receives
+  QUIZ_SUBMISSION ||--o{ QUIZ_SUBMISSION_ANSWER : contains
 ```
 
-`REVIEW` carries the SM-2-style spaced-repetition state (ease factor, interval, due date) per user per card — this is what makes "due today" in the deck library and the study-mode queue a plain query rather than a client-side approximation.
+Important invariants:
 
-**ORM/migrations**: Prisma, chosen for schema-as-code migrations and generating TypeScript types straight from the schema — those types are the same ones the shared package (below) re-exports to the frontend, so a schema change surfaces as a type error in the client rather than a runtime mismatch.
+- A card belongs to one deck, and deck access is checked against the authenticated owner or an authorized admin path.
+- AI drafts are pending until a user decision resolves them.
+- Study reviews are per user/card and store the outcome and next due time.
+- A classroom quiz has one submission per student (`quizId + studentId` is unique).
+- A card can be retired from Study without deleting it from the deck.
 
-**Monorepo layout**:
+Prisma migrations are stored in `backend/prisma/migrations` and are applied automatically by the production backend container on startup.
 
-```
-/frontend    — Svelte + Vite SPA
-/backend     — Fastify API + generation worker
-/shared      — TypeScript types shared by both (API contracts, entity shapes)
-/infra       — docker-compose, Caddy config, deploy scripts, Prisma schema
-```
+## 7. Authentication and authorization
 
-## 7. Authentication & identity
+The implemented flow is email/password, not Microsoft Entra OAuth. Sign-up accepts only configured domains, hashes passwords with scrypt, and creates new student/teacher accounts as `pending`. An administrator must approve them before login. The optional `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_NAME` variables bootstrap or resynchronise an approved admin account at backend startup.
 
-**Primary**: Microsoft Entra ID (Azure AD) OAuth. Imperial already runs on Microsoft 365 — the survey itself was distributed as a Microsoft Form — so students already have the account this would use for sign-in; no new password, no separate credential to leak or reset.
+Sessions are signed, HTTP-only cookies. No access token is stored in `localStorage`. The optional `TEST_LOGIN_SECRET`/`TEST_LOGIN_EMAIL` pair enables a development-only login endpoint and must never be enabled publicly.
 
-**Fallback, in use now since Entra ID app registration isn't feasible for the team to obtain**: email + password accounts, restricted at signup to `@ic.ac.uk` / `@imperial.ac.uk` addresses (passwords are app-specific, hashed with scrypt — not the user's actual Microsoft/Imperial password). Requires no institutional approval and can ship immediately; treat it as a stopgap, not the target state.
+## 8. Deployment and operations
 
-Either way, session handling is a signed, HTTP-only cookie scoped to the single origin from §2 — no token stored in `localStorage`, nothing for a frontend XSS bug to steal directly.
+The intended deployment is one Linux host running Docker Compose services for Caddy, backend, worker, PostgreSQL, and Redis. Caddy obtains the certificate for `APP_DOMAIN`; backend startup runs `prisma migrate deploy` before serving requests.
 
-## 8. Deployment topology (Linux server)
+Production operations still require manual ownership of:
 
-**Target**: a single Ubuntu LTS VM, everything containerized via Docker Compose. Services: `proxy` (Caddy), `frontend` (static build, served by `proxy`), `backend` (API), `worker` (generation jobs), `db` (Postgres), `redis`. A `systemd` unit runs `docker compose up -d` on boot so the stack survives a server restart without manual intervention.
+- `.env` secret management;
+- PostgreSQL backups and restore testing;
+- log retention and disk monitoring;
+- external health checks; and
+- `git pull` followed by `docker compose up -d --build` for updates.
 
-**TLS**: Caddy over Nginx+certbot — Caddy obtains and renews Let's Encrypt certificates automatically from a two-line config block, which matters for a tool that won't have dedicated ops staff watching certificate expiry.
+See [infra/README.md](./infra/README.md) for the concrete commands. Automated CI/CD, Entra OAuth, and scheduled off-box backups are not part of the current repository.
 
-**Storage**:
-- Postgres data on a Docker-managed volume, backed up nightly (`pg_dump`, compressed, shipped off-box — Imperial-provided storage or an object-storage bucket, retained on a rolling window, e.g. 14 days).
-- Uploaded PDFs on a separate volume, **deleted once their generation job's drafts are all resolved** (accepted or discarded) — there's no product reason to retain a student's lecture slides once the cards are drawn from them, and not retaining them removes a whole category of data-handling risk.
+## 9. Security and product follow-ups
 
-**Environments**: local Docker Compose for development (same compose file, different `.env`), one production server. A staging environment is worth adding once the AI-generation flow is built and needs testing against real Claude calls without touching production quotas — not needed for the initial deploy.
-
-## 9. CI/CD
-
-GitHub Actions on push to `main`:
-
-1. Install, typecheck, lint, run backend + frontend test suites.
-2. Build the frontend static bundle and the backend Docker image; push the image to GitHub Container Registry.
-3. SSH into the server and run a deploy script: pull the new image, `docker compose up -d`, run any pending Prisma migrations, health-check the `/api/health` endpoint, and only then remove the previous image tag.
-
-Kept deliberately simple — one server, one deploy target — rather than a multi-stage pipeline the team would have to maintain more than they'd use.
-
-## 10. Operations
-
-- **Secrets**: a `.env` file on the server (Claude API key, DB credentials, Entra ID client secret), never committed; injected into containers via Docker Compose's `env_file`. GitHub Actions holds the same secrets for CI, injected at deploy time over SSH — no secrets manager needed at this scale.
-- **Rate limiting**: per-user quotas on generation and grading (§5) plus a general per-IP request limit at the Caddy layer against basic abuse.
-- **Logging**: container stdout/stderr, captured by Docker's logging driver with rotation configured (avoid an unbounded log file being the thing that fills the disk).
-- **Monitoring**: a `/api/health` endpoint checked by an external uptime pinger (e.g. a free-tier status-check service) — enough to know the server is down before a student reports it; a full metrics/alerting stack (Prometheus/Grafana) is more operational overhead than this deployment's scale justifies.
-- **File validation**: uploaded PDFs capped by size (e.g. 20MB) and MIME-type checked server-side before entering the generation queue, so an oversized or malformed upload fails fast rather than tying up the worker.
-
-## 11. Open questions for the team
-
-These are decisions this design deliberately leaves to the people who'll own them, not gaps in the design itself:
-
-- **Entra ID app registration** — does the team have (or can it get) the Imperial IT approval needed to register the app for SSO? Launch is starting with the email + password fallback since this wasn't available.
-- **Claude API budget ownership** — who sets and monitors the per-user generation/grading quotas from §5, and what's the ceiling before it needs a conversation?
-- **Server hosting** — is the Linux VM Imperial-provided (departmental infrastructure) or an external host (e.g. a cloud VM) procured by the team? Affects who holds root and who's paged if it goes down.
-- **PDF retention exception** — confirm the "delete after drafts resolved" policy in §8 against any module/copyright-material handling guidance the department already has for lecture slides.
+- Test AI imports against representative lecture PDFs and verify source grounding.
+- Import an `.apkg` file into the pilot's target Anki Desktop release.
+- Replace the browser-native deck deletion confirmation with an accessible in-app confirmation.
+- Decide whether the pilot needs cross-deck Study, actionable forgotten-card filtering, or per-deck study intervals.
+- Confirm retention and access requirements for stored lecture PDFs with the department.

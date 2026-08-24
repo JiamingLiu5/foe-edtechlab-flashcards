@@ -1,94 +1,84 @@
-# Flashcard Activity — Feature & Design Plan
+# Flashcards
 
-FoE EdTechLab's flashcard site for student self-study. This document plans where the site goes next, grounded in what's already built and in [`Flashcard_Expectation_From_Students_Summary.md`](./Flashcard_Expectation_From_Students_Summary.md), our survey of 9 Imperial students on how they study and what they'd expect from an AI-assisted version.
+FoE EdTechLab's full-stack flashcard application for Imperial students and teachers. The current implementation is a Svelte/TypeScript frontend, a Fastify API, a background AI-generation worker, PostgreSQL, Redis, and Caddy.
 
-For instructions on using the application, see the [student user guide](./USER_GUIDE.md) or the [teacher user guide](./TEACHER_USER_GUIDE.md).
+For using the application, see the [student user guide](./USER_GUIDE.md) and [teacher user guide](./TEACHER_USER_GUIDE.md). For the system design, see [design.md](./design.md); for a Linux deployment, see [infra/README.md](./infra/README.md).
 
-> A working prototype implementing the plan below (and the fullstack architecture in [`design.md`](./design.md)) lives in `/frontend`, `/backend`, `/shared`, and `/infra`. To run it locally see the dev commands in `package.json`; to deploy it on a Linux server see [`infra/README.md`](./infra/README.md).
+## Current implementation
 
-## Current baseline
+The prototype now provides:
 
-`index.html` already ships a self-contained, no-login activity:
+- Email/password accounts restricted to the configured Imperial domains (`@ic.ac.uk` and `@imperial.ac.uk` by default), signed HTTP-only sessions, and admin approval for new accounts.
+- Student deck management with manual cards, pasted text, PDF import, public URL import, tags, difficulty labels, search, and tag/difficulty filtering.
+- Asynchronous AI card drafting with Gemini OCR/generation support and optional Claude generation/grading, followed by an explicit review step. Drafts can be accepted individually, accepted in bulk, edited, or discarded.
+- AI review of existing cards for possible factual or clarity issues without silently overwriting the deck.
+- Study mode with persisted review history, overdue-first scheduling, Again/Hard/Good/Easy ratings, configurable study intervals, retired cards, lapse counts, and “Needs Attention” indicators.
+- Multiple-choice, fill-in-the-blank, and mixed self-study quizzes, with KaTeX rendering for mathematical notation.
+- Typed-answer Self-check with AI grading, feedback, missing points, and the reference answer.
+- Native Anki `.apkg` export containing a SQLite collection and media manifest.
+- Teacher classrooms with join codes, reusable quiz decks, deck-based or manually written questions, difficulty selection, hard-question quotas, timers, previews, weighted points, multiple correct answers, and submission scores.
+- Admin views for approving/deactivating users, inspecting user decks, and managing per-user AI quotas.
+- Redis-backed daily quotas for generation, grading, deck review, distractor generation, and generated-card limits.
 
-- Mode picker: **Study mode** (flip cards, mark Got it / Review again) or **Quiz mode** (auto-generated multiple choice).
-- Manual card entry (front/back) and **bulk import** via pasted text or `.txt`/`.csv` upload, `Question | Answer` or tab-separated.
-- A 12-card sample deck to try the activity with no setup.
-- A hard **12-card limit**, and no persistence — the deck resets on reload.
+AI imports are deliberately asynchronous. The normal flow is `queued → extracting → generating → ready`, followed by human review before cards enter a deck.
 
-That baseline is the floor, not the target. Everything below is planned on top of it.
+## Repository layout
 
-## Planned functions & features
+```text
+/frontend    — Svelte + Vite browser application
+/backend     — Fastify API, Prisma data access, and generation worker
+/shared      — TypeScript types shared by frontend and backend
+/infra       — Docker Compose, Caddy, and deployment files
+```
 
-Grouped by the gap it closes, each traced back to what students actually asked for.
+## Local development
 
-### 1. Card creation & import
-- **Raise or remove the 12-card cap**, with multiple named decks instead of one loose pile — a real revision set is a full module, not 12 cards.
-- **PDF slide import**: upload lecture slides, get a draft deck back. Directly requested — *"Maybe scrape for exam papers and just generate flashcards from that?"* (R3).
-- Keep manual entry and the existing bulk `Question | Answer` import as the fast path for students who already have their own notes — R2, R5, and R6 all build decks from scratch today and shouldn't lose that.
-
-### 2. AI-assisted generation — with guardrails
-This is the feature students want most (67% would rather the AI write cards than just format their own) *and* trust least (average 2.8/5). The guardrails aren't optional polish — they're the difference between the two numbers:
-
-- **Grounded generation only** — no invented facts. *"Make sure the AI does not hallucinate answers"* (R5).
-- **Match the course's own wording**, not a paraphrase. *"Make sure AI does not 'rephrase' answers to be in a different style from the course"* (R5).
-- **Concise by default** — a card is a prompt, not a paragraph. *"Keep cards relatively concise so that it tests core knowledge"* (R5).
-- **Render formulae and symbols properly** (MathJax/KaTeX), not as flattened text. *"Make sure they can cleanly print or display formulae and mathematical symbols"* (R1).
-- **Show a diff, not a black box** — every AI-touched card shows what changed, editable before it's accepted. *"The ability to see what the AI has modified so you don't have to go through the whole thing to check what is valid"* (R8).
-- **Suggest, don't overwrite** — on an existing deck, the AI proposes cards to fill gaps; the student accepts, edits, or ignores each one individually. *"The AI could suggest cards that may or may not be missing, and the user can choose to add / ignore / edit"* (R6).
-
-### 3. Study & practice modes
-- Keep flip-based Study mode and MCQ Quiz mode as-is — both were validated by current users (active recall, quick to use).
-- **Typed self-check mode**: type an answer, AI grades it against the card and shows what's missing, instead of only multiple choice or self-reported "got it." *"Using AI to check solutions as well. Would make it more quiz-like and fun"* (R7); *"a way to input answers... and check what percentage of it is accurate"* (R8).
-- **Spaced repetition scheduling** in Study mode, replacing (or sitting alongside) the current Got it / Review again buttons with an actual review interval. *"Spaced repetition and the cards letting you drill common patterns"* (R5) — it's the stated reason R2 prefers Anki over Quizlet.
-
-### 4. Progress & data
-- **Per-card forget tracking** — surface which cards keep coming back wrong, not just today's got-it/review split. *"Being able to see which flashcards have been forgotten the most frequently"* (R6).
-- **Save and sync decks across devices** (account or browser-synced storage) instead of resetting on reload. *"Stat tracking, syncs across devices"* (R3).
-- **One-click Anki export** so a generated deck isn't stranded in this tool. *"Make sure that these flashcards can be easily imported into Anki"* (R5) — three of the four current flashcard users are already on Anki.
-- Keep the interface **ad-free**; adverts were called out unprompted as a reason existing tools get abandoned (R8).
-
-## Design plan
-
-### Direction
-Utilitarian and fast — the existing light, high-contrast card-panel look (blue accent, rounded 18px panels, generous whitespace) is the right register for a study tool used between lectures and works well against the current `index.html` styling. Extend it rather than rebrand it:
-
-- **Color**: keep `--accent: #2563eb` for primary actions; reserve amber (`#f59e0b`, already used for "Review again") for anything spaced-repetition or attention-needed, and green (`#22c55e`, already used for "Got it") for mastered/confirmed states. Add one new role — a quiet violet or teal — *only* for AI-generated content, so a student can tell at a glance which cards a person wrote and which the AI drafted.
-- **Type**: system sans throughout (already the case) — a study tool is read in short bursts, not admired; no display face needed.
-- **Layout**: keep the two-pane builder (controls left, activity right) on desktop, single column on mobile (already implemented at 900px) — don't add navigation chrome that competes with the deck itself.
-
-### New surfaces this roadmap requires
-- **AI review screen**: a diff view (old text struck through or greyed, new text highlighted in the AI accent color) with per-card Accept / Edit / Discard — this is the trust guardrail from R8 made visible, and it's the one new screen every AI feature above depends on.
-- **Deck library**: a card grid one level up from today's single deck, each deck showing name, card count, and a small forgotten-cards indicator (ties to the per-card forget tracking above).
-- **PDF upload step**: a drag-and-drop zone ahead of the existing bulk-import textarea, with the extracted draft deck landing directly in the AI review screen above — never auto-added silently.
-
-### Interaction principles carried into every new feature
-- **Nothing AI-written enters a deck unreviewed.** Every generation path (PDF import, gap-filling suggestions) ends at the diff/review screen, never a direct write.
-- **Everything exportable.** Whatever format a deck ends up in, an Anki-compatible export is always one click away — this is a study aid, not a walled garden.
-- **Local-first, sync-optional.** Keep the "no login to try it" spirit of the current sample-deck flow; syncing and accounts unlock persistence but are never required to run a study session.
-
-## Source
-Feature priorities above come from [`Flashcard_Expectation_From_Students_Summary.md`](./Flashcard_Expectation_From_Students_Summary.md) (9 Imperial students, Microsoft Forms, 13–17 July 2026). Respondent tags (R1–R9) match that document.
-
-## Week 3 implementation
-
-The full-stack prototype now includes:
-
-- SM-2 scheduling with persisted repetition/ease state, overdue-first queues, interval previews, and next-due metrics.
-- Safe KaTeX rendering in study, quiz, self-check, AI review, and deck question-bank views.
-- Manual single/bulk creation with multiline fields, LaTeX preview, tags, text search, and tag filtering.
-- Asynchronous PDF/URL generation with explicit queue states and per-draft accept/edit/discard review.
-- A native Anki `.apkg` export containing a SQLite collection and media manifest.
-- Rolling 30-day lapse counts and a “Needs Attention” deck badge after three failed recalls.
-- Redis-backed daily generation, deck-review, and AI-grading quotas.
-- Admin user/deck inspection protected by server-side admin authorization.
-
-Apply the latest schema and run the checks before local development:
+Requirements: Node.js/npm, Docker, and Docker Compose.
 
 ```sh
+npm install
+cp backend/.env.example backend/.env
 npm run dev:infra
 npm run prisma:migrate
+
+# In separate terminals:
+npm run dev:backend
+npm run dev:worker
+npm run dev:frontend
+```
+
+The frontend runs at `http://localhost:5173`. Set `GEMINI_API_KEY` for PDF OCR and live AI generation. `ANTHROPIC_API_KEY` is optional; generation and grading fall back to Gemini when it is absent. Never commit a populated `.env` file.
+
+Useful checks:
+
+```sh
 npm test
 npm run build
 ```
 
-Copy `infra/.env.example` to `infra/.env` and supply real Gemini/Anthropic credentials for live AI flows. Never commit that file.
+`npm run dev:infra` starts only local PostgreSQL and Redis. Production-like deployment, including the frontend, backend, worker, and Caddy, is documented in [infra/README.md](./infra/README.md).
+
+## Main user journeys
+
+### Students
+
+1. Register with an approved Imperial-domain email and wait for admin approval.
+2. Create a deck and add cards manually or request AI drafts from text, a PDF, or a public URL.
+3. Review AI drafts before accepting them into the deck.
+4. Practise with Study, Quiz, or Self-check; export the finished deck to Anki when needed.
+5. Join teacher classrooms from **Classwork** and complete assigned quizzes.
+
+### Teachers
+
+1. Register as a teacher and wait for admin approval.
+2. Create quiz decks and mark eligible cards for quizzes.
+3. Create a classroom, share its join code, configure a quiz, preview it, and send it.
+4. Review student submissions and scores from the classroom page.
+
+Detailed instructions are in [USER_GUIDE.md](./USER_GUIDE.md) and [TEACHER_USER_GUIDE.md](./TEACHER_USER_GUIDE.md).
+
+## Product background and next steps
+
+The original requirements came from the anonymised student survey in [Flashcard_Expectation_From_Students_Summary.md](./Flashcard_Expectation_From_Students_Summary.md). The implementation addresses its main requests: spaced repetition, typed-answer checking, bulk/AI import, visible AI edits, formula rendering, forgotten-card indicators, and Anki export.
+
+The dated [3rd_week_plan.md](./3rd_week_plan.md), [bugs.md](./bugs.md), and [IMPROVEMENT_IDEAS.md](./IMPROVEMENT_IDEAS.md) files are retained as project history. Remaining validation and product ideas are recorded there and in [KNOWN_ISSUES.md](./KNOWN_ISSUES.md).

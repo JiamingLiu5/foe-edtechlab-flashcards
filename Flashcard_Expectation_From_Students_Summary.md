@@ -68,6 +68,6 @@ A clear majority want the AI to generate, not just tidy up — but trust in that
 
 ---
 
-**Source:** `Flashcard_Expectation_From_Students.xlsx`, Microsoft Forms export, 10 submissions between 13–17 July 2026.
+**Source:** Microsoft Forms export, 10 submissions between 13–17 July 2026. The original export is not required to run the application; this file is the anonymised working summary.
 
 One submission (all free-text fields filled with the placeholder word "test") is excluded from analysis; the remaining nine are anonymised here as R1–R9 in submission order.

@@ -1,6 +1,8 @@
-# Site review — ldnmeals.com (2026-08-03)
+# Site review and product follow-ups (2026-08-03)
 
-Full click-through of the deployed app (deck browse, Study, Quiz, AI review, Self-check,
+> Historical review of the Flashcards application, updated 21 August 2026 to correct the project name and reflect the current validation status. The findings below are retained as a product backlog, not as a claim that the deployed site is still unchanged.
+
+Full click-through of the deployed Flashcards app (deck browse, Study, Quiz, AI review, Self-check,
 Export, Admin, onboarding tour, Study settings) plus a read of the relevant source.
 
 ## Fixed this session
